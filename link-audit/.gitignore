@@ -1,0 +1,27 @@
+# Data files (user-provided)
+Links1.txt
+links.txt
+*.txt
+
+# Generated reports
+report_data.json
+*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

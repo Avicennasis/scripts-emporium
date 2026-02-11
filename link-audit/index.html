@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Audit Report</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --surface-color: #2d2d2d;
+            --text-color: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --border-color: #404040;
+            --accent-color: #3b82f6;
+            --hover-color: #383838;
+            --header-bg: #252525;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 2rem;
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        h1 {
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+
+        .meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--surface-color);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+
+        th {
+            background: var(--header-bg);
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        th:hover {
+            background: #333;
+        }
+
+        th::after {
+            content: '↕';
+            position: absolute;
+            right: 8px;
+            opacity: 0.3;
+        }
+
+        tr:hover {
+            background: var(--hover-color);
+        }
+
+        /* Column Widths */
+        .site-col {
+            width: 15%;
+            font-weight: 500;
+            color: var(--accent-color);
+        }
+
+        .url-col {
+            width: 30%;
+            word-break: break-all;
+        }
+
+        .status-col {
+            width: 10%;
+        }
+
+        .remove-col {
+            width: 80px;
+            text-align: center;
+        }
+
+        .desc-col {
+            width: 35%;
+        }
+
+        /* Filter Row Styles */
+        .filter-row td {
+            padding: 5px 15px;
+            background: var(--header-bg);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .filter-row input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 4px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: #333;
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        .filter-row input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .status-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-ok {
+            background: #052e16;
+            color: #4ade80;
+            border: 1px solid #14532d;
+        }
+
+        .status-error {
+            background: #450a0a;
+            color: #f87171;
+            border: 1px solid #7f1d1d;
+        }
+
+        .status-warn {
+            background: #422006;
+            color: #facc15;
+            border: 1px solid #713f12;
+        }
+
+        .redirect-chain {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .btn-remove {
+            background: #ef4444;
+            border: none;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.2s;
+        }
+
+        .btn-remove:hover {
+            background: #dc2626;
+        }
+
+        .sort-asc::after {
+            content: '↑' !important;
+            opacity: 1 !important;
+        }
+
+        .sort-desc::after {
+            content: '↓' !important;
+            opacity: 1 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Link Audit Report</h1>
+    <div class="meta" id="metaInfo">Loading data...</div>
+
+    <table id="linksTable">
+        <thead>
+            <tr>
+                <th onclick="sortTable(0)" data-key="website">Website</th>
+                <th onclick="sortTable(1)" data-key="url">URL</th>
+                <th onclick="sortTable(2)" data-key="status_code">Status</th>
+                <th>Remove</th>
+                <th onclick="sortTable(4)" data-key="description">Description</th>
+            </tr>
+            <!-- Filter Row -->
+            <tr class="filter-row">
+                <td><input type="text" placeholder="Filter Site..." onkeyup="updateFilter('website', this.value)"></td>
+                <td><input type="text" placeholder="Filter URL..." onkeyup="updateFilter('url', this.value)"></td>
+                <td><input type="text" placeholder="Filter Status..." onkeyup="updateFilter('status_code', this.value)">
+                </td>
+                <td></td>
+                <td><input type="text" placeholder="Filter Description..."
+                        onkeyup="updateFilter('description', this.value)"></td>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <!-- Rows will be injected here -->
+        </tbody>
+    </table>
+
+    <script>
+        let reportData = [];
+        let displayedData = [];
+        let sortDir = 'asc';
+        let sortKey = 'url';
+
+        // Filter State
+        let filters = {
+            website: '',
+            url: '',
+            status_code: '',
+            description: ''
+        };
+
+        async function loadData() {
+            try {
+                const resp = await fetch('/api/data');
+                reportData = await resp.json();
+
+                // Post-process to extract TLD
+                reportData.forEach(item => {
+                    try {
+                        const u = new URL(item.url);
+                        item.website = u.hostname.replace(/^www\./, '');
+                    } catch (e) {
+                        item.website = 'unknown';
+                    }
+                });
+
+                // Initial filter/sort
+                applyFilters();
+            } catch (e) {
+                console.error(e);
+                document.getElementById('metaInfo').innerText = "Error loading data. Make sure server.py is running.";
+            }
+        }
+
+        function updateFilter(key, value) {
+            filters[key] = value.toLowerCase();
+            applyFilters();
+        }
+
+        function applyFilters() {
+            displayedData = reportData.filter(item => {
+                if (filters.website && !String(item.website || '').toLowerCase().includes(filters.website)) return false;
+                if (filters.url && !String(item.url || '').toLowerCase().includes(filters.url)) return false;
+
+                // Status filter: Build a searchable string from what the user SEES
+                if (filters.status_code) {
+                    let statusSearchStr = '';
+
+                    // Add the label (OK, Error, Forbidden, etc.)
+                    if (item.error) {
+                        if (item.error.includes("DNS")) statusSearchStr += "dns error ";
+                        else if (item.error.includes("Timeout")) statusSearchStr += "timeout ";
+                        else if (item.error.includes("SSL")) statusSearchStr += "tls error ";
+                        else statusSearchStr += "error ";
+                        statusSearchStr += item.error + " ";
+                    } else if (item.status_code >= 200 && item.status_code < 300) {
+                        statusSearchStr += "ok ";
+                    } else if (item.status_code === 404) {
+                        statusSearchStr += "not found ";
+                    } else if (item.status_code === 403) {
+                        statusSearchStr += "forbidden ";
+                    } else {
+                        statusSearchStr += item.status_code + " ";
+                    }
+
+                    // Add redirect info
+                    if (item.redirects && item.redirects.length > 0) {
+                        statusSearchStr += `redirects ${item.redirects.length} `;
+                    }
+
+                    // Add raw status code
+                    statusSearchStr += (item.status_code || '') + " ";
+
+                    if (!statusSearchStr.toLowerCase().includes(filters.status_code)) return false;
+                }
+
+                if (filters.description) {
+                    const descStr = ((item.title || '') + ' ' + (item.description || '')).toLowerCase();
+                    if (!descStr.includes(filters.description)) return false;
+                }
+                return true;
+            });
+
+            _sortDisplayedData();
+            renderTable();
+        }
+
+        function _sortDisplayedData() {
+            displayedData.sort((a, b) => {
+                let valA = a[sortKey] || '';
+                let valB = b[sortKey] || '';
+
+                if (sortKey === 'status_code') {
+                    valA = valA || 0;
+                    valB = valB || 0;
+                } else {
+                    if (typeof valA === 'string') valA = valA.toLowerCase();
+                    if (typeof valB === 'string') valB = valB.toLowerCase();
+                }
+
+                if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function renderTable() {
+            document.getElementById('metaInfo').innerText = `Generated on ${reportData.length > 0 ? reportData[0].timestamp : 'Now'} • ${reportData.length} Links (${displayedData.length} shown)`;
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            displayedData.forEach(item => {
+                const tr = document.createElement('tr');
+
+                // Logic for Status Label
+                let statusLabel = 'Error';
+                let statusClass = 'status-error';
+                if (item.error) {
+                    if (item.error.includes("DNS")) statusLabel = "DNS Error";
+                    else if (item.error.includes("Timeout")) statusLabel = "Timeout";
+                    else if (item.error.includes("SSL")) statusLabel = "TLS Error";
+                    else statusLabel = "Error";
+                } else if (item.status_code >= 200 && item.status_code < 300) {
+                    statusLabel = "OK";
+                    statusClass = "status-ok";
+                } else if (item.status_code === 404) {
+                    statusLabel = "Not Found";
+                } else if (item.status_code === 403) {
+                    statusLabel = "Forbidden";
+                } else {
+                    statusLabel = item.status_code;
+                    statusClass = "status-warn";
+                }
+
+                // Redirect chain
+                let redirectHtml = '';
+                if (item.redirects && item.redirects.length > 0) {
+                    redirectHtml = `<div class="redirect-chain">Redirects: ${item.redirects.length}</div>`;
+                } else if (item.error) {
+                    redirectHtml = `<div class="redirect-chain">${escapeHtml(item.error)}</div>`;
+                } else if (item.status_code) {
+                    redirectHtml = `<div class="redirect-chain">Code: ${item.status_code}</div>`;
+                }
+
+                // Description
+                let descHtml = '';
+                if (item.title) descHtml += `<div style="font-weight:600; margin-bottom:4px;">${escapeHtml(item.title)}</div>`;
+                if (item.description) descHtml += `<div style="font-size:0.9em; color:var(--text-muted);">${escapeHtml(item.description)}</div>`;
+                if (!descHtml) descHtml = '<em style="color:#666">No description available</em>';
+
+                tr.innerHTML = `
+                <td class="site-col">${escapeHtml(item.website)}</td>
+                <td class="url-col"><a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a></td>
+                <td class="status-col"><span class="status-tag ${statusClass}">${statusLabel}</span>${redirectHtml}</td>
+                <td class="remove-col"><button class="btn-remove" onclick="removeRow(${item.id})">Remove</button></td>
+                <td class="desc-col">${descHtml}</td>
+            `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function removeRow(id) {
+            if (!confirm('Permanently delete this link?')) return;
+
+            try {
+                await fetch(`/api/remove?id=${id}`, { method: 'DELETE' });
+                reportData = reportData.filter(i => i.id !== id);
+                applyFilters();
+            } catch (e) {
+                alert("Error deleting row: " + e);
+            }
+        }
+
+        function sortTable(colIndex) {
+            const keys = ['website', 'url', 'status_code', null, 'description'];
+            const key = keys[colIndex];
+            if (!key) return;
+
+            if (sortKey === key) {
+                sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortKey = key;
+                sortDir = 'asc';
+            }
+
+            applyFilters(); // Re-sorts via _sortDisplayedData
+
+            document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+            const th = document.querySelectorAll('th')[colIndex];
+            if (th) th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+
+        loadData();
+    </script>
+</body>
+
+</html>
