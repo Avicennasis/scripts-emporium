@@ -1,5 +1,10 @@
 # Avic's Scripts Emporium
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Avicennasis/scripts-emporium/badge)](https://scorecard.dev/viewer/?uri=github.com/Avicennasis/scripts-emporium)
+[![Release](https://img.shields.io/github/v/release/Avicennasis/scripts-emporium?display_name=tag)](https://github.com/Avicennasis/scripts-emporium/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A collection of standalone utility scripts for sysadmin tasks, web scraping, DNS management, and everyday automation. Each script lives in its own folder with its own README.
 
 ## Scripts
