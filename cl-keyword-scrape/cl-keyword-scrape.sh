@@ -763,7 +763,7 @@ fi
     content="${title}"$'\n'"${body}"
 
     if hits="$(collect_hits "$content")"; then
-      emit_match "$hits" "$url" "$title" | tee -a "$OUTPUT" >/dev/null
+      emit_match "$hits" "$url" "$title" | tee -a "$OUTPUT"
     fi
 
     sleep "$DELAY"
