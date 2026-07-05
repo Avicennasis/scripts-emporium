@@ -72,6 +72,30 @@ log() {
     echo "[${timestamp}] [${level}] ${message}"
 }
 
+# Verifies that placeholder configuration defaults have been overridden.
+# Running with placeholders is a guaranteed failure (404 HTML "image"
+# emailed to a nonexistent address), so exit early with a clear message.
+validate_configuration() {
+    local config_errors=0
+
+    if [[ "${CAMERA_URL}" == *"link.to/camimage.jpg"* ]]; then
+        log "ERROR" "CAMERA_URL is still the placeholder '${CAMERA_URL}'."
+        log "ERROR" "Set TRAFFICCAM_URL to your camera's image URL."
+        config_errors=1
+    fi
+
+    if [[ "${EMAIL_RECIPIENT}" == "USERNAME@gmail.com" ]]; then
+        log "ERROR" "EMAIL_RECIPIENT is still the placeholder '${EMAIL_RECIPIENT}'."
+        log "ERROR" "Set TRAFFICCAM_EMAIL to the address that should receive snapshots."
+        config_errors=1
+    fi
+
+    if [[ ${config_errors} -ne 0 ]]; then
+        log "ERROR" "Refusing to run with placeholder configuration. See --help for environment variables."
+        exit 1
+    fi
+}
+
 # Verifies that all required dependencies are installed and available
 # Exits with error code 1 if any dependency is missing
 check_dependencies() {
@@ -423,6 +447,9 @@ main() {
     log "INFO" "  - Email format:      $([ "${USE_HTML_EMAIL}" == true ] && echo "HTML" || echo "Plain text")"
     log "INFO" "  - Temp directory:    ${TEMP_DIR}"
     log "INFO" "============================================"
+
+    # Refuse to run if placeholder config values are still in place
+    validate_configuration
 
     # Verify all dependencies are available
     check_dependencies
