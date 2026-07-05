@@ -246,27 +246,39 @@ def compile_keyword_regex(keywords: Iterable[str]) -> re.Pattern:
 # Seen-state persistence (dedupe)
 # -----------------------------
 
-def load_seen(path: Path) -> set[str]:
+# Cap on stored seen-IDs: prevents the seen file from growing unbounded over
+# months of polling. Oldest entries are pruned first on save. Craigslist
+# listings expire after ~45 days, so 10k recent IDs is far more than enough
+# to keep dedupe correct.
+MAX_SEEN_ENTRIES = 10_000
+
+
+def load_seen(path: Path) -> dict[str, None]:
     """
-    Load a JSON list of listing IDs already processed.
+    Load listing IDs already processed, as an insertion-ordered dict
+    (oldest first). Ordering lets save_seen() prune oldest entries.
 
     This prevents duplicate notifications across runs.
     """
     if not path.exists():
-        return set()
+        return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, list):
-            return set(map(str, data))
+            return dict.fromkeys(map(str, data))
     except Exception:
         # If file is corrupted, we fail open (treat as empty).
         pass
-    return set()
+    return {}
 
 
-def save_seen(path: Path, seen: set[str]) -> None:
-    """Save processed listing IDs to disk as JSON."""
-    path.write_text(json.dumps(sorted(seen), indent=2), encoding="utf-8")
+def save_seen(path: Path, seen: dict[str, None]) -> None:
+    """
+    Save processed listing IDs to disk as a JSON list in chronological
+    (insertion) order, keeping only the newest MAX_SEEN_ENTRIES.
+    """
+    ids = list(seen)[-MAX_SEEN_ENTRIES:]
+    path.write_text(json.dumps(ids, indent=2), encoding="utf-8")
 
 
 # -----------------------------
@@ -405,7 +417,7 @@ def run_once(
 
             processed_new += 1
             # Mark as seen early to avoid repeats even if something fails mid-run
-            seen.add(listing.id)
+            seen[listing.id] = None
 
             try:
                 post_html = http_get_text(session, listing.link)
