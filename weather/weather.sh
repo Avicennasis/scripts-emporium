@@ -62,6 +62,16 @@ pick_env SPEAK         "0"            speak
 
 pick_env NWS_UA        "pit-tts/3.6 (contact: you@example.com)" user_agent ua
 
+# NWS asks for a real contact in the User-Agent and may rate-limit/block
+# placeholder contacts. Warn (don't fail) if the default is still in use;
+# see README "NWS API User-Agent".
+case "$NWS_UA" in
+  *you@example.com*)
+    echo "WARNING: NWS_UA still uses the placeholder contact 'you@example.com'." >&2
+    echo "         Set NWS_UA=\"your-app (contact: you@yourdomain)\" — NWS may rate-limit placeholder contacts." >&2
+    ;;
+esac
+
 # Espeak settings (only used if SPEAK=1)
 pick_env ESPEAK_BIN    "espeak"       espeak_bin
 pick_env ESPEAK_VOICE  "en-us"        espeak_voice voice
