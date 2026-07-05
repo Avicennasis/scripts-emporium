@@ -187,6 +187,32 @@ def check_link(url, user_agent, timeout, verbose=False):
     if verbose: log(f"Finished {url}: {result['status_code'] or result['error']}", verbose, True)
     return result
 
+# Per-domain locks: serialize concurrent requests against the same host so a
+# batch never bursts multiple simultaneous requests at one domain (rate-limit
+# politeness). Lock creation is guarded because worker threads race on first
+# access to a domain.
+_domain_locks = {}
+_domain_locks_guard = threading.Lock()
+
+def _get_domain_lock(url):
+    """Return the lock for this URL's domain, creating it thread-safely."""
+    try:
+        domain = urlparse(url).netloc.lower()
+    except Exception:
+        domain = 'unknown'
+    with _domain_locks_guard:
+        lock = _domain_locks.get(domain)
+        if lock is None:
+            lock = threading.Lock()
+            _domain_locks[domain] = lock
+    return lock
+
+def check_link_polite(url, user_agent, timeout, verbose=False):
+    """check_link wrapper that holds a per-domain lock for the duration of the
+    request, so at most one in-flight request per domain regardless of batch size."""
+    with _get_domain_lock(url):
+        return check_link(url, user_agent, timeout, verbose)
+
 def handle_existing_file(filepath):
     """
     Prompts user if file exists to avoid accidental data loss.
@@ -311,7 +337,7 @@ def main():
         batch = processing_queue[i:i+args.batch_size]
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.batch_size) as executor:
-            future_to_url = {executor.submit(check_link, url, args.user_agent, args.timeout, args.verbose): url for url in batch}
+            future_to_url = {executor.submit(check_link_polite, url, args.user_agent, args.timeout, args.verbose): url for url in batch}
             for future in concurrent.futures.as_completed(future_to_url):
                 res = future.result()
                 new_results.append(res)
