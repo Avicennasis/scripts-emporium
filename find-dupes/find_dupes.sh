@@ -4,6 +4,7 @@
 SEARCH_DIR="."
 OUTPUT_FILE="duplicates_report.csv"
 VERBOSE=false
+FORCE=false
 
 # Function to display help
 show_help() {
@@ -13,9 +14,13 @@ show_help() {
     echo "  -h, --help           Show this help message and exit"
     echo "  -v, --verbose        Enable verbose output"
     echo "  -o, --output FILE    Specify output file (default: duplicates_report.csv)"
+    echo "  -f, --force          Overwrite existing output file without prompting"
     echo ""
     echo "Arguments:"
     echo "  DIRECTORY            Directory to scan (default: current directory)"
+    echo ""
+    echo "When stdin is not a terminal (cron, CI, pipes), an existing output"
+    echo "file is overwritten automatically instead of prompting."
 }
 
 # Parse arguments
@@ -28,6 +33,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--verbose)
             VERBOSE=true
+            shift
+            ;;
+        -f|--force)
+            FORCE=true
             shift
             ;;
         -o|--output)
@@ -48,8 +57,13 @@ if [ ! -d "$SEARCH_DIR" ]; then
     exit 1
 fi
 
-# Check if output file exists
-if [ -f "$OUTPUT_FILE" ]; then
+# Check if output file exists.
+# Only prompt when running interactively; --force or a non-TTY stdin
+# (cron, CI, pipes) overwrites without prompting so automated runs
+# never hang waiting for input.
+if [ -f "$OUTPUT_FILE" ] && [ "$FORCE" != true ] && [ ! -t 0 ]; then
+    echo "Output file '$OUTPUT_FILE' exists; overwriting (non-interactive mode)."
+elif [ -f "$OUTPUT_FILE" ] && [ "$FORCE" != true ]; then
     echo "Output file '$OUTPUT_FILE' already exists."
     while true; do
         read -p "Do you want to [O]verwrite, [R]ename, or [C]ancel? " choice
