@@ -94,6 +94,45 @@ validate_ip() {
     fi
 }
 
+# get_zone_serial: Extracts the SOA serial from a zone file.
+# Relies on the '; Serial' comment convention used in the template.
+# Arguments:
+#   $1 - The zone file to read
+# Outputs the serial number, or nothing if not found.
+get_zone_serial() {
+    local file="$1"
+    sed -nE 's/^[[:space:]]*([0-9]+)[[:space:]]*;[[:space:]]*Serial.*/\1/p' "$file" | head -n 1
+}
+
+# compute_next_serial: Computes the next SOA serial in YYYYMMDDNN format.
+# Arguments:
+#   $1 - The current serial (may be empty)
+# Rules:
+#   - If the current serial starts with today's date, increment the NN suffix.
+#   - Otherwise start today's sequence at 00.
+#   - Always returns a value strictly greater than the current serial
+#     (falls back to current+1 if the date-based value wouldn't be).
+compute_next_serial() {
+    local current="${1:-0}"
+    local today new
+    today=$(date '+%Y%m%d')
+
+    if [[ "$current" =~ ^${today}([0-9]{2})$ ]]; then
+        # Same day: bump the two-digit sequence number
+        new=$((current + 1))
+    else
+        new="${today}00"
+    fi
+
+    # Guarantee monotonic increase (protects against clock skew or an
+    # unexpectedly large existing serial)
+    if ((new <= current)); then
+        new=$((current + 1))
+    fi
+
+    echo "$new"
+}
+
 # create_backup: Creates a timestamped backup of a file
 # Arguments:
 #   $1 - The file to backup
@@ -171,6 +210,27 @@ sed -i "s/${IP_PLACEHOLDER}/${EXTERNAL_IP}/g" "$WORKING_FILE"
 # Verify the substitution was successful
 if grep -q "$IP_PLACEHOLDER" "$WORKING_FILE"; then
     log_message "WARNING: Placeholder still present in working file. Substitution may have failed."
+fi
+
+# Increment the SOA serial so secondaries and resolvers pick up the change.
+# The new serial must be greater than the one currently served, so read the
+# live zone file's serial (falling back to the template's) and bump it.
+if [[ -f "$ZONE_FILE" ]]; then
+    CURRENT_SERIAL=$(get_zone_serial "$ZONE_FILE")
+else
+    CURRENT_SERIAL=""
+fi
+if [[ -z "$CURRENT_SERIAL" ]]; then
+    CURRENT_SERIAL=$(get_zone_serial "$WORKING_FILE")
+fi
+
+if [[ -z "$CURRENT_SERIAL" ]]; then
+    log_message "WARNING: Could not locate SOA serial ('; Serial' comment) — serial NOT incremented."
+    log_message "         Secondaries may not pick up this update."
+else
+    NEW_SERIAL=$(compute_next_serial "$CURRENT_SERIAL")
+    sed -i -E "s/^([[:space:]]*)[0-9]+([[:space:]]*;[[:space:]]*Serial.*)/\1${NEW_SERIAL}\2/" "$WORKING_FILE"
+    log_message "SOA serial: ${CURRENT_SERIAL} -> ${NEW_SERIAL}"
 fi
 
 # Copy the updated working file to the final zone file
