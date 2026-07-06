@@ -813,18 +813,18 @@ main() {
     # Archive each configured directory
     for dir in "${SOURCE_DIRS[@]}"; do
         if backup_archive_directory "${dir}"; then
-            ((success_count++))
+            success_count=$((success_count + 1))
         else
-            ((failure_count++))
+            failure_count=$((failure_count + 1))
         fi
     done
 
     # Archive each configured individual file
     for file in "${SOURCE_FILES[@]}"; do
         if backup_archive_file "${file}"; then
-            ((success_count++))
+            success_count=$((success_count + 1))
         else
-            ((failure_count++))
+            failure_count=$((failure_count + 1))
         fi
     done
 
@@ -839,9 +839,9 @@ main() {
     # Sync each configured directory
     for dir in "${SOURCE_DIRS[@]}"; do
         if backup_sync_directory "${dir}"; then
-            ((success_count++))
+            success_count=$((success_count + 1))
         else
-            ((failure_count++))
+            failure_count=$((failure_count + 1))
         fi
     done
 
@@ -854,9 +854,9 @@ main() {
     log_info "------------------------------------------"
 
     if backup_mirror; then
-        ((success_count++))
+        success_count=$((success_count + 1))
     else
-        ((failure_count++))
+        failure_count=$((failure_count + 1))
     fi
 
     # -------------------------------------------------------------------------
