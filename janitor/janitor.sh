@@ -60,11 +60,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Directory to clean up
-# IMPORTANT: Update this path to your actual temp directory
-TARGET_DIR="/path/to/cleanup"
+# Set via the JANITOR_TARGET_DIR environment variable, or edit the
+# fallback below. The script refuses to run while this is still the
+# placeholder — a janitor deletes files, so guessing is not acceptable.
+TARGET_DIR="${JANITOR_TARGET_DIR:-/path/to/cleanup}"
 
 # Number of days to keep files
-RETENTION_DAYS=30
+RETENTION_DAYS="${JANITOR_RETENTION_DAYS:-30}"
 
 # Base directory for logs
 LOG_BASE_DIR="${HOME}/logs/janitor"
@@ -280,6 +282,14 @@ echo "[$TIMESTAMP] Starting Janitor cleanup..."
 
 # 1. Validation
 # -------------
+# Refuse the placeholder even if the path happens to exist — this script
+# deletes files, so operating on an unintended directory is the worst case.
+if [ "$TARGET_DIR" = "/path/to/cleanup" ]; then
+    echo "Error: TARGET_DIR is still the placeholder '/path/to/cleanup'." >&2
+    echo "       Set JANITOR_TARGET_DIR or edit TARGET_DIR in this script." >&2
+    exit 1
+fi
+
 if [ ! -d "$TARGET_DIR" ]; then
     echo "Error: Target directory '$TARGET_DIR' does not exist." >&2
     exit 1
@@ -327,8 +337,10 @@ fi
 # -------------------------
 echo "[$TIMESTAMP] Calculating cleanup size and updating logs..."
 
-# Count files to be deleted
-FILES_COUNT=$(grep -cz '' "$FILES_TO_DELETE_LIST" || echo "0")
+# Count files to be deleted: each entry from find -print0 is terminated
+# by a NUL byte, so counting NULs counts entries. (grep -cz on
+# null-delimited data behaves inconsistently across grep versions.)
+FILES_COUNT=$(tr -cd '\0' < "$FILES_TO_DELETE_LIST" | wc -c)
 
 # Calculate total size of files to be deleted (in bytes)
 # 'du --files0-from' is efficient for processing the list from find -print0
