@@ -51,13 +51,17 @@ Perfect for self-hosted servers behind dynamic IP connections. The system consis
    cd dyndns
    ```
 
-2. Edit `dyndns.sh` and configure:
+2. Configure `dyndns.sh` via environment variables (e.g. in your crontab
+   entry) — the script refuses to run while the placeholders are in place:
 
    ```bash
-   REMOTE_USER="your_username"
-   REMOTE_HOST="your.dns.server"
-   REMOTE_PATH="/etc/bind/zones"
+   DYNDNS_REMOTE_USER="your_username"
+   DYNDNS_REMOTE_HOST="your.dns.server"
+   DYNDNS_REMOTE_PATH="/etc/bind/zones"   # optional, this is the default
    ```
+
+   Also available: `DYNDNS_LOCAL_DIR`, `DYNDNS_IP_FILENAME`,
+   `DYNDNS_IP_SERVICE_URL`. Alternatively edit the fallbacks in the script.
 
 3. Set up SSH key authentication:
 
@@ -81,12 +85,17 @@ Perfect for self-hosted servers behind dynamic IP connections. The system consis
    cp HOME.example /etc/bind/zones/
    ```
 
-2. Edit `dyndnsupdate.sh` and configure:
+2. Configure `dyndnsupdate.sh` via environment variables — the script
+   refuses to run while `ZONE_FILE` is still the placeholder:
 
    ```bash
-   ZONES_DIR="/etc/bind/zones"
-   ZONE_FILE="db.yourdomain.com"
+   DYNDNS_ZONES_DIR="/etc/bind/zones"     # optional, this is the default
+   DYNDNS_ZONE_FILE="db.yourdomain.com"
    ```
+
+   Also available: `DYNDNS_TEMPLATE_FILE`, `DYNDNS_WORKING_FILE`,
+   `DYNDNS_IP_FILE`. Alternatively edit the fallbacks in the script.
+   The SOA serial is incremented automatically on every zone update.
 
 3. Edit `HOME.example` to match your domain configuration
 

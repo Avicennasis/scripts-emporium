@@ -35,20 +35,29 @@ set -euo pipefail
 # Customize these variables to match your environment
 
 # Remote server SSH connection string (user@hostname)
-REMOTE_USER="USERNAME"
-REMOTE_HOST="HOST.COM"
+# Set via DYNDNS_REMOTE_USER / DYNDNS_REMOTE_HOST, or edit the fallbacks.
+REMOTE_USER="${DYNDNS_REMOTE_USER:-USERNAME}"
+REMOTE_HOST="${DYNDNS_REMOTE_HOST:-HOST.COM}"
 
 # Remote directory where the IP file will be stored (on the DNS server)
-REMOTE_PATH="/etc/bind/zones"
+REMOTE_PATH="${DYNDNS_REMOTE_PATH:-/etc/bind/zones}"
 
 # Local directory to store the IP address file
-LOCAL_DYNDNS_DIR="${HOME}/.dyndns"
+LOCAL_DYNDNS_DIR="${DYNDNS_LOCAL_DIR:-${HOME}/.dyndns}"
 
 # Name of the file that will contain the external IP address
-IP_FILENAME="homeip"
+IP_FILENAME="${DYNDNS_IP_FILENAME:-homeip}"
 
 # Service URL to retrieve external IP (alternatives: ifconfig.me, ipinfo.io/ip)
-IP_SERVICE_URL="http://icanhazip.com"
+IP_SERVICE_URL="${DYNDNS_IP_SERVICE_URL:-http://icanhazip.com}"
+
+# Refuse to run while the SSH target is still a placeholder — otherwise
+# rsync tries to SSH to a nonexistent host and fails or hangs in cron.
+if [[ "$REMOTE_USER" == "USERNAME" || "$REMOTE_HOST" == "HOST.COM" ]]; then
+    echo "ERROR: REMOTE_USER/REMOTE_HOST are still placeholders (${REMOTE_USER}@${REMOTE_HOST})." >&2
+    echo "       Set DYNDNS_REMOTE_USER and DYNDNS_REMOTE_HOST, or edit this script." >&2
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # Helper Functions
