@@ -345,13 +345,17 @@ release_lock() {
     log_debug "Lock released"
 }
 
-# Build rsync exclude arguments from the EXCLUDE_PATTERNS array
+# Build rsync exclude arguments from the EXCLUDE_PATTERNS array.
+# Populates the array variable named by $1 (nameref), one element per
+# --exclude=PATTERN, so patterns containing spaces or glob characters
+# survive intact — no word-splitting, no quoting hazards.
 build_exclude_args() {
-    local args=""
+    local -n _exclude_out="$1"
+    _exclude_out=()
+    local pattern
     for pattern in "${EXCLUDE_PATTERNS[@]}"; do
-        args+="--exclude=${pattern} "
+        _exclude_out+=("--exclude=${pattern}")
     done
-    echo "${args}"
 }
 
 # -----------------------------------------------------------------------------
@@ -383,8 +387,8 @@ backup_archive_directory() {
     # -h: human-readable sizes
     # --info=progress2: show overall progress
     local rsync_opts="-ah"
-    local exclude_args
-    exclude_args=$(build_exclude_args)
+    local -a exclude_args
+    build_exclude_args exclude_args
 
     # Add dry-run flag if enabled
     if [[ "${DRY_RUN}" == true ]]; then
@@ -402,8 +406,7 @@ backup_archive_directory() {
     fi
 
     # Execute rsync with dynamically built options
-    # shellcheck disable=SC2086
-    if rsync ${rsync_opts} ${exclude_args} "${source_path}/" "${dest_path}/"; then
+    if rsync "${rsync_opts}" "${exclude_args[@]}" "${source_path}/" "${dest_path}/"; then
         log_success "Archived: ${source_dir}"
     else
         log_error "Failed to archive: ${source_dir}"
