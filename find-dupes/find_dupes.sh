@@ -77,8 +77,11 @@ fi
 
 echo "Calculating SHA256 hashes (this may take a while)..."
 
-# Create a temporary file for raw hashes
+# Create a temporary file for raw hashes; clean it up on any exit
+# (normal completion, error, or Ctrl+C) so interrupted runs don't
+# accumulate temp files in /tmp.
 TMP_HASHES=$(mktemp)
+trap 'rm -f "$TMP_HASHES"' EXIT
 
 # Find all files, calculate sha256sum, and save to temp file
 if [ "$VERBOSE" = true ]; then
@@ -112,9 +115,6 @@ sort "$TMP_HASHES" | uniq -w 64 -D | while read -r line; do
     # Append to CSV
     echo "$hash,\"$file\",$size" >> "$OUTPUT_FILE"
 done
-
-# Clean up
-rm "$TMP_HASHES"
 
 echo "Done! Report saved to '$OUTPUT_FILE'"
 echo "Found $(wc -l < "$OUTPUT_FILE" | awk '{print $1 - 1}') duplicate files."
