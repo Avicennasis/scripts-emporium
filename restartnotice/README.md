@@ -40,11 +40,22 @@ If using Gmail, you will need to create an App Password instead of your regular 
 
 2. **Configure the script:**
 
-   Edit `restartnotice.sh` and update the `RECIPIENT_EMAIL` variable:
+   Set the `RESTARTNOTICE_EMAIL` environment variable (e.g. in your systemd
+   unit or crontab entry):
 
    ```bash
-   RECIPIENT_EMAIL="your-email@example.com"
+   RESTARTNOTICE_EMAIL="your-email@example.com"
    ```
+
+   …or edit `restartnotice.sh` and update the `RECIPIENT_EMAIL` fallback:
+
+   ```bash
+   RECIPIENT_EMAIL="${RESTARTNOTICE_EMAIL:-your-email@example.com}"
+   ```
+
+   The subject line can likewise be overridden with `RESTARTNOTICE_SUBJECT`.
+   The script refuses to run while the recipient is still the placeholder
+   `USERNAME@gmail.com`.
 
 3. **Make the script executable:**
 

@@ -40,12 +40,22 @@ fi
 # CONFIGURATION
 # -----------------------------------------------------------------------------
 # The email address that will receive the reboot notification.
-# Change this to your preferred email address.
-RECIPIENT_EMAIL="USERNAME@gmail.com"
+# Set via the RESTARTNOTICE_EMAIL environment variable, or edit the
+# fallback below.
+RECIPIENT_EMAIL="${RESTARTNOTICE_EMAIL:-USERNAME@gmail.com}"
 
 # The subject line for the notification email.
 # You can customize this to suit your preferences or monitoring needs.
-EMAIL_SUBJECT="System Restart Notification"
+EMAIL_SUBJECT="${RESTARTNOTICE_SUBJECT:-System Restart Notification}"
+
+# Refuse to run while the recipient is still the placeholder — otherwise
+# reboot notifications silently fail or go to a stranger's gmail address.
+if [[ "${RECIPIENT_EMAIL}" == "USERNAME@gmail.com" ]]; then
+    echo "ERROR: RECIPIENT_EMAIL is still the placeholder 'USERNAME@gmail.com'." >&2
+    echo "       Set RESTARTNOTICE_EMAIL or edit RECIPIENT_EMAIL in this script." >&2
+    logger -t restartnotice "Aborted: recipient email is still the placeholder USERNAME@gmail.com" 2>/dev/null
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # SYSTEM INFORMATION GATHERING
