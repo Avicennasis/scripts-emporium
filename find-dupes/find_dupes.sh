@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Default values
 SEARCH_DIR="."
@@ -40,7 +41,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -o|--output)
-            OUTPUT_FILE="$2"
+            OUTPUT_FILE="${2:?Error: -o/--output requires a filename argument}"
             shift
             shift
             ;;
@@ -104,7 +105,14 @@ if [ "$VERBOSE" = true ]; then
     echo "Running: find \"$SEARCH_DIR\" -type f -print0 | xargs -0 sha256sum"
 fi
 
-find "$SEARCH_DIR" -type f -print0 | xargs -0 sha256sum > "$TMP_HASHES"
+# Hash all files. Under pipefail an unreadable file would abort the whole
+# scan, so capture the status and warn loudly instead — the report then
+# says explicitly that it may be incomplete rather than silently skipping.
+hash_status=0
+find "$SEARCH_DIR" -type f -print0 | xargs -0 -r sha256sum > "$TMP_HASHES" || hash_status=$?
+if [ "$hash_status" -ne 0 ]; then
+    echo "Warning: some files could not be hashed (exit ${hash_status}); report may be incomplete." >&2
+fi
 
 echo "Processing duplicates..."
 
@@ -120,8 +128,10 @@ sort "$TMP_HASHES" | uniq -w 64 -D | while read -r line; do
         echo "Found duplicate: $file"
     fi
 
-    # Calculate human-readable file size
-    size=$(du -h "$file" | awk '{print $1}')
+    # Calculate human-readable file size (file may vanish mid-run;
+    # don't let that abort the report under set -e/pipefail)
+    size=$(du -h "$file" 2>/dev/null | awk '{print $1}' || true)
+    size="${size:-?}"
     
     # Escape double quotes in filename for CSV
     file="${file//\"/\"\"}"
