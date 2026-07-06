@@ -776,7 +776,13 @@ class DOClient:
 # DNS RECORD OPERATIONS
 # =============================================================================
 
-def delete_matching_records(client: DOClient, zone: str, predicate, label: str) -> int:
+def delete_matching_records(
+    client: DOClient,
+    zone: str,
+    predicate,
+    label: str,
+    records: Optional[List[Dict[str, Any]]] = None,
+) -> int:
     """
     Delete all DNS records in a zone that match a predicate function.
 
@@ -804,6 +810,13 @@ def delete_matching_records(client: DOClient, zone: str, predicate, label: str) 
         Human-readable description of what's being deleted. Used in output
         messages (e.g., "DKIM records", "MX records", "wildcard records").
 
+    records : Optional[List[Dict[str, Any]]]
+        Pre-fetched record list for this zone. When provided, no API fetch
+        is performed and deleted entries are removed from the list IN PLACE,
+        so callers can pass the same list to several helpers without
+        re-fetching between mutations. When None (default), records are
+        fetched fresh from the API.
+
     Returns:
     --------
     int
@@ -815,15 +828,20 @@ def delete_matching_records(client: DOClient, zone: str, predicate, label: str) 
       - "  - Deleted N {label}" if records were deleted
       - "  = No {label} found" if no matching records existed
     """
-    # Fetch current records
-    records = client.list_records(zone)
+    # Use the caller's pre-fetched list if given; otherwise fetch fresh
+    if records is None:
+        records = client.list_records(zone)
 
     # Filter to records matching the predicate
     to_delete = [r for r in records if predicate(r)]
 
-    # Delete each matching record
+    # Delete each matching record, keeping the shared cache consistent
+    deleted_ids = set()
     for r in to_delete:
         client.delete_record(zone, r["id"])
+        deleted_ids.add(r["id"])
+    if deleted_ids:
+        records[:] = [r for r in records if r["id"] not in deleted_ids]
 
     # Print status message
     if to_delete:
@@ -840,6 +858,7 @@ def upsert_single_txt(
     name: str,
     value: str,
     match_prefix: Optional[str] = None,
+    records: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """
     Ensure exactly one TXT record exists with the specified name and value.
@@ -902,8 +921,10 @@ def upsert_single_txt(
     # Normalize the prefix for matching (if provided)
     prefix_norm = normalize_txt_value(match_prefix) if match_prefix else None
 
-    # Fetch current records and find candidates
-    records = client.list_records(zone)
+    # Use the caller's pre-fetched list if given (maintained in place);
+    # otherwise fetch fresh from the API
+    if records is None:
+        records = client.list_records(zone)
     candidates: List[Dict[str, Any]] = []
 
     for r in records:
@@ -925,7 +946,12 @@ def upsert_single_txt(
 
     # Case 1: No existing record - create new
     if not candidates:
-        client.create_record(zone, {"type": "TXT", "name": name, "data": value})
+        resp = client.create_record(zone, {"type": "TXT", "name": name, "data": value})
+        # Keep the shared cache consistent (API wraps the record in
+        # 'domain_record'; dry-run returns an empty dict)
+        created = (resp or {}).get("domain_record")
+        if created:
+            records.append(created)
         print(f"  + TXT {name} = {value}")
         return
 
@@ -937,17 +963,29 @@ def upsert_single_txt(
     # Update if the value differs
     if keep_norm != desired_norm:
         client.update_record(zone, keep["id"], {"type": "TXT", "name": name, "data": value})
+        keep["data"] = value  # keep shared cache consistent
         print(f"  ~ TXT {name} updated")
     else:
         print(f"  = TXT {name} already correct")
 
-    # Delete any duplicate records (extras beyond the first)
+    # Delete any duplicate records (extras beyond the first),
+    # removing them from the shared cache as well
+    extra_ids = set()
     for extra in candidates[1:]:
         client.delete_record(zone, extra["id"])
+        extra_ids.add(extra["id"])
         print(f"  - TXT {name} duplicate removed (id={extra['id']})")
+    if extra_ids:
+        records[:] = [r for r in records if r["id"] not in extra_ids]
 
 
-def ensure_deadend_mx(client: DOClient, zone: str, mx_target: str, priority: int = 0) -> None:
+def ensure_deadend_mx(
+    client: DOClient,
+    zone: str,
+    mx_target: str,
+    priority: int = 0,
+    records: Optional[List[Dict[str, Any]]] = None,
+) -> None:
     """
     Delete all MX records and create a single dead-end MX at the apex.
 
@@ -993,19 +1031,25 @@ def ensure_deadend_mx(client: DOClient, zone: str, mx_target: str, priority: int
         client,
         zone,
         lambda r: r.get("type") == "MX",
-        "MX records"
+        "MX records",
+        records=records,
     )
 
     # Step 2: Ensure the target has a trailing dot (FQDN format)
     mx_target = ensure_fqdn_dot(mx_target)
 
     # Step 3: Create the new dead-end MX record
-    client.create_record(zone, {
+    resp = client.create_record(zone, {
         "type": "MX",
         "name": "@",
         "data": mx_target,
         "priority": priority
     })
+    # Keep the shared cache consistent if the caller passed one
+    if records is not None:
+        created = (resp or {}).get("domain_record")
+        if created:
+            records.append(created)
     print(f"  + MX @ -> {mx_target} (priority {priority})")
 
 
@@ -1077,6 +1121,15 @@ def lockdown_domain(
 
     try:
         # ---------------------------------------------------------------------
+        # STEP 0: FETCH RECORDS ONCE
+        # ---------------------------------------------------------------------
+        # All the helpers below operate on this zone. Fetch the record list
+        # a single time and pass it through; each helper keeps the shared
+        # list consistent as it mutates records. This replaces 3-4 full
+        # list_records() API round-trips per domain with one.
+        zone_records = client.list_records(domain)
+
+        # ---------------------------------------------------------------------
         # STEP 1: DELETE DKIM RECORDS
         # ---------------------------------------------------------------------
         # DKIM records contain '_domainkey' in their name (e.g., selector._domainkey)
@@ -1086,7 +1139,8 @@ def lockdown_domain(
             client,
             domain,
             lambda r: (r.get("type") in ("TXT", "CNAME")) and ("_domainkey" in (r.get("name") or "")),
-            "DKIM (_domainkey) records"
+            "DKIM (_domainkey) records",
+            records=zone_records,
         )
 
         # ---------------------------------------------------------------------
@@ -1099,7 +1153,8 @@ def lockdown_domain(
                 client,
                 domain,
                 lambda r: (r.get("name") or "").startswith("*"),
-                "wildcard records (name startswith '*')"
+                "wildcard records (name startswith '*')",
+                records=zone_records,
             )
 
         # ---------------------------------------------------------------------
@@ -1115,7 +1170,7 @@ def lockdown_domain(
         #   - rua: Where to send aggregate reports (using plus-tagging)
         rua = f"mailto:{dmarc_localpart_prefix}+{domain}@{dmarc_report_domain}"
         dmarc_value = f"v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s; pct=100; rua={rua}"
-        upsert_single_txt(client, domain, "_dmarc", dmarc_value)
+        upsert_single_txt(client, domain, "_dmarc", dmarc_value, records=zone_records)
 
         # ---------------------------------------------------------------------
         # STEP 4: SET SPF TO DENY ALL
@@ -1123,14 +1178,14 @@ def lockdown_domain(
         # SPF specifies which servers can send email for the domain
         # "v=spf1 -all" means NO servers are authorized (-all = hard fail)
         # We use match_prefix to only touch SPF records, not other TXT records
-        upsert_single_txt(client, domain, "@", "v=spf1 -all", match_prefix="v=spf1")
+        upsert_single_txt(client, domain, "@", "v=spf1 -all", match_prefix="v=spf1", records=zone_records)
 
         # ---------------------------------------------------------------------
         # STEP 5: REPLACE MX WITH DEAD-END
         # ---------------------------------------------------------------------
         # MX records tell senders where to deliver mail
         # By pointing to a non-resolving host, mail delivery will fail
-        ensure_deadend_mx(client, domain, mx_target=deadend_mx_target, priority=0)
+        ensure_deadend_mx(client, domain, mx_target=deadend_mx_target, priority=0, records=zone_records)
 
         # ---------------------------------------------------------------------
         # STEP 6: OPTIONALLY ADD DMARC REPORT AUTHORIZATION
