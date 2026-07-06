@@ -325,7 +325,7 @@ acquire_lock() {
     # flock -n: non-blocking; returns immediately if lock can't be acquired
     if ! flock -n 200; then
         log_error "Another instance of ${SCRIPT_NAME} is already running"
-        log_error "If you're sure no other instance is running, remove: ${LOCK_FILE}"
+        log_error "(holder's PID is recorded in ${LOCK_FILE})"
         exit 1
     fi
 
@@ -334,13 +334,15 @@ acquire_lock() {
     log_debug "Lock acquired (PID: $$)"
 }
 
-# Release the lock file on exit
+# Release the lock on exit.
+# NOTE: we deliberately do NOT rm the lock file. The flock on FD 200 is
+# the actual mutual exclusion — the kernel releases it automatically when
+# the process exits (including SIGKILL), so a leftover file is harmless.
+# Removing the file instead creates a race: a new instance can recreate
+# the path and two processes end up holding locks on different inodes.
 release_lock() {
-    # Remove the lock file if it exists
-    if [[ -f "${LOCK_FILE}" ]]; then
-        rm -f "${LOCK_FILE}"
-        log_debug "Lock released"
-    fi
+    exec 200>&- 2>/dev/null || true
+    log_debug "Lock released"
 }
 
 # Build rsync exclude arguments from the EXCLUDE_PATTERNS array
