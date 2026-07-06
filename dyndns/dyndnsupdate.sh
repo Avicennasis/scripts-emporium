@@ -36,19 +36,20 @@ set -euo pipefail
 # Customize these variables to match your environment
 
 # Directory containing BIND zone files
-ZONES_DIR="/etc/bind/zones"
+ZONES_DIR="${DYNDNS_ZONES_DIR:-/etc/bind/zones}"
 
 # Template file containing the zone structure with placeholder
-TEMPLATE_FILE="HOME.example"
+TEMPLATE_FILE="${DYNDNS_TEMPLATE_FILE:-HOME.example}"
 
 # Intermediate file for processing (before copying to final zone file)
-WORKING_FILE="HOME"
+WORKING_FILE="${DYNDNS_WORKING_FILE:-HOME}"
 
 # Final zone file name for the domain
-ZONE_FILE="db.HOST.COM"
+# Set via DYNDNS_ZONE_FILE, or edit the fallback below.
+ZONE_FILE="${DYNDNS_ZONE_FILE:-db.HOST.COM}"
 
 # File containing the current external IP (synced from client)
-IP_FILE="homeip"
+IP_FILE="${DYNDNS_IP_FILE:-homeip}"
 
 # Placeholder string in the template that will be replaced with the actual IP
 IP_PLACEHOLDER="HOMEREPLACEME"
@@ -153,6 +154,15 @@ create_backup() {
 # -----------------------------------------------------------------------------
 # Main Script Execution
 # -----------------------------------------------------------------------------
+
+# Refuse to run while ZONE_FILE is still the placeholder. This script
+# writes the zone file and runs 'rndc reload' afterwards — running with a
+# bogus zone path against a live BIND is not a safe failure mode.
+if [[ "$ZONE_FILE" == *"HOST.COM"* ]]; then
+    log_message "ERROR: ZONE_FILE is still the placeholder '$ZONE_FILE'."
+    log_message "       Set DYNDNS_ZONE_FILE (e.g. DYNDNS_ZONE_FILE=db.example.com) or edit ZONE_FILE in this script."
+    exit 1
+fi
 
 log_message "Starting BIND zone update..."
 
