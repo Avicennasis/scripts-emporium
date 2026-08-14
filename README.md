@@ -18,6 +18,7 @@ A collection of standalone utility scripts for sysadmin tasks, web scraping, DNS
 | [domx-records](domx-records/) | Python | Manages email-related DNS posture (SPF/DMARC/MX) across DigitalOcean-hosted domains |
 | [downornot](downornot/) | Bash | Monitors website uptime continuously and sends HTML email alerts when sites go down |
 | [dyndns](dyndns/) | Bash | Automatically updates BIND9 DNS records when your home IP address changes via SSH/rsync |
+| [entropy-id](entropy-id/) | Python | Read-only triage of a raw disk or image — already wiped, full-disk encrypted, or still holding data? |
 | [find-dupes](find-dupes/) | Bash | Finds duplicate files recursively using SHA256 hashing and generates a CSV report |
 | [grab](grab/) | Bash | Polite wget wrapper for downloading files from web directory listings with rate limiting |
 | [janitor](janitor/) | Bash | Automates cleanup of old files in a directory with detailed logging and optional email reports |
