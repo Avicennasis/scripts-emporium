@@ -42,6 +42,14 @@ This project contains three scripts:
 - `do_dns_audit.py` -- per-domain detailed audit
 - `do_dns_audit_grouped.py` -- grouped audit (cluster domains with identical posture)
 
+All three import shared helpers and the read-only `DOClient` from
+`domx_common.py` in this directory, so run them from here (or add this
+directory to `PYTHONPATH`):
+
+- `domx_common.py` -- shared helpers (`.env`/token loading, record
+  normalization, tag parsing, API client); not run directly. `lockdown_mail.py`
+  keeps its own write-capable `DOClient` (dry-run + create/update/delete).
+
 ### lockdown_mail.py
 
 For each domain you provide, this script:
