@@ -141,13 +141,13 @@ from __future__ import annotations
 
 # Standard library imports for core functionality
 import argparse      # Command-line argument parsing
-import os            # Environment variable access and file operations
 import sys           # System exit codes
 import time          # Sleep/retry timing for API rate limiting
 from typing import Any, Dict, List, Optional  # Type hints for clarity
 
 # Third-party HTTP library for API communication
 import requests
+from domx_common import get_token, normalize_txt_value
 
 # =============================================================================
 # CONSTANTS
@@ -162,197 +162,12 @@ API_BASE = "https://api.digitalocean.com/v2"
 # ENVIRONMENT / CONFIGURATION LOADING
 # =============================================================================
 
-def load_env_file(env_path: str = ".env") -> Dict[str, str]:
-    """
-    Load environment variables from a .env file.
-
-    This function provides a simple, dependency-free way to load configuration
-    from a .env file without requiring the python-dotenv package. It's designed
-    to be a drop-in solution for small scripts that need basic .env support.
-
-    The .env file format supported:
-      - KEY=value           (basic assignment)
-      - KEY="quoted value"  (quoted values, quotes are stripped)
-      - KEY='quoted value'  (single quotes also supported)
-      - # comment           (lines starting with # are ignored)
-      - Empty lines         (ignored)
-      - KEY=                (empty value is valid)
-
-    Parameters:
-    -----------
-    env_path : str
-        Path to the .env file. Defaults to ".env" in the current directory.
-
-    Returns:
-    --------
-    Dict[str, str]
-        Dictionary mapping environment variable names to their values.
-        Returns an empty dictionary if the file doesn't exist.
-
-    Notes:
-    ------
-    - This function does NOT automatically set os.environ; it just returns
-      the parsed values. The caller decides what to do with them.
-    - Values are stripped of surrounding whitespace and quotes.
-    - This is intentionally simple and doesn't handle all edge cases that
-      python-dotenv does (like multi-line values or escape sequences).
-    """
-    env_vars = {}
-
-    # Check if the .env file exists before attempting to read
-    if not os.path.isfile(env_path):
-        return env_vars
-
-    # Read and parse the .env file line by line
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            # Strip whitespace from both ends of the line
-            line = line.strip()
-
-            # Skip empty lines and comments
-            if not line or line.startswith("#"):
-                continue
-
-            # Split on the first '=' only (values can contain '=')
-            if "=" in line:
-                key, value = line.split("=", 1)
-
-                # Clean up the key (remove whitespace)
-                key = key.strip()
-
-                # Clean up the value (remove whitespace and surrounding quotes)
-                value = value.strip()
-
-                # Remove surrounding quotes if present (both single and double)
-                if len(value) >= 2:
-                    if (value[0] == value[-1]) and value[0] in ('"', "'"):
-                        value = value[1:-1]
-
-                env_vars[key] = value
-
-    return env_vars
-
-
-def get_token(args_token: Optional[str]) -> Optional[str]:
-    """
-    Retrieve the DigitalOcean API token from available sources.
-
-    This function implements a priority-based token retrieval system that
-    checks multiple sources in order, allowing flexible configuration:
-
-    Priority Order:
-    1. .env file (DO_TOKEN=...)     - Most secure for local development
-    2. Environment variable         - Standard for CI/CD and containers
-    3. Command-line argument        - Convenient for one-off runs
-
-    Parameters:
-    -----------
-    args_token : Optional[str]
-        Token value from command-line arguments (--token flag).
-        May be None if not provided on command line.
-
-    Returns:
-    --------
-    Optional[str]
-        The API token if found in any source, None otherwise.
-
-    Security Considerations:
-    ------------------------
-    - .env file: Should have restrictive permissions (chmod 600)
-    - Environment variable: Visible in process listings, less secure
-    - Command-line: Visible in shell history, least secure
-
-    The .env file approach is recommended for local development because:
-    - Not visible in shell history
-    - Not visible in process listings
-    - Can be excluded from version control via .gitignore
-    """
-    # Priority 1: Check .env file first (most secure option)
-    env_vars = load_env_file()
-    if "DO_TOKEN" in env_vars and env_vars["DO_TOKEN"]:
-        return env_vars["DO_TOKEN"]
-
-    # Priority 2: Check shell environment variable
-    env_token = os.getenv("DO_TOKEN")
-    if env_token:
-        return env_token
-
-    # Priority 3: Use command-line argument as fallback
-    if args_token:
-        return args_token
-
-    # No token found in any source
-    return None
-
 
 # =============================================================================
 # NORMALIZATION HELPER FUNCTIONS
 # =============================================================================
 # These functions handle the messy reality of DNS data: inconsistent formatting,
 # quoted values from copy-paste, trailing dots on hostnames, etc.
-
-def normalize_txt_value(s: Optional[str]) -> str:
-    """
-    Normalize a TXT record value for reliable comparisons.
-
-    Problem:
-    --------
-    DNS provider UIs and tools often display TXT records with surrounding
-    quotes, and users frequently copy-paste these quoted values back into
-    DNS management interfaces. This results in literal quote characters
-    being stored as part of the record value. Additionally, whitespace
-    handling varies between providers.
-
-    For example, these should all be treated as equivalent:
-      - v=spf1 -all
-      - "v=spf1 -all"
-      - 'v=spf1 -all'
-      - "v=spf1  -all"  (extra internal space)
-
-    Solution:
-    ---------
-    This function:
-    1. Handles None input gracefully
-    2. Strips leading/trailing whitespace
-    3. Removes wrapping quote characters (repeatedly, to handle nested quotes)
-    4. Collapses multiple internal whitespace to single spaces
-
-    Parameters:
-    -----------
-    s : Optional[str]
-        The raw TXT record value from the DNS API. May be None.
-
-    Returns:
-    --------
-    str
-        Normalized string suitable for comparison. Returns empty string for None.
-
-    Examples:
-    ---------
-    >>> normalize_txt_value('"v=spf1 -all"')
-    'v=spf1 -all'
-
-    >>> normalize_txt_value("v=DMARC1;  p=reject")
-    'v=DMARC1; p=reject'
-
-    >>> normalize_txt_value(None)
-    ''
-    """
-    # Handle None input - common when accessing optional dict keys
-    if s is None:
-        return ""
-
-    # Convert to string and strip outer whitespace
-    s = str(s).strip()
-
-    # Repeatedly strip matching quote pairs from both ends
-    # This handles cases like: '"value"' or ""value"" (yes, people do this)
-    while len(s) >= 2 and ((s[0] == s[-1] == '"') or (s[0] == s[-1] == "'")):
-        s = s[1:-1].strip()
-
-    # Collapse all runs of whitespace to single spaces
-    # This normalizes "v=spf1   -all" to "v=spf1 -all"
-    return " ".join(s.split())
 
 
 def ensure_fqdn_dot(host: str) -> str:
