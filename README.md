@@ -16,7 +16,7 @@ A collection of standalone utility scripts for sysadmin tasks, web scraping, DNS
 | [cl-keyword-scrape](cl-keyword-scrape/) | Bash | Scrapes Craigslist listings matching a regex pattern with HTML output and email alerts |
 | [craigslist-search](craigslist-search/) | Python | Watches Craigslist search results for new posts containing configured keywords and sends email alerts |
 | [domx-records](domx-records/) | Python | Manages email-related DNS posture (SPF/DMARC/MX) across DigitalOcean-hosted domains |
-| [downornot](downornot/) | Bash | Monitors website uptime continuously and sends HTML email alerts when sites go down |
+| [downornot](downornot/) | Bash | Setup wizard that generates a continuous website-uptime monitor (assembled from `template.sh`) which emails HTML alerts when a site goes down, plus an uptime-report analyzer |
 | [dyndns](dyndns/) | Bash | Automatically updates BIND9 DNS records when your home IP address changes via SSH/rsync |
 | [entropy-id](entropy-id/) | Python | Read-only triage of a raw disk or image — already wiped, full-disk encrypted, or still holding data? |
 | [find-dupes](find-dupes/) | Bash | Finds duplicate files recursively using SHA256 hashing and generates a CSV report |

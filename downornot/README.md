@@ -5,6 +5,11 @@ A lightweight website uptime monitoring system that alerts you via email when yo
 
 DownOrNot continuously monitors a website's availability, logs all check results for historical analysis, and includes a companion script to calculate your uptime percentage.
 
+> **The running monitor is generated, not committed.** This directory ships the
+> generator (`setup.sh`), the monitor template it fills in (`template.sh`), and
+> the log analyzer (`uptime.sh`). `setup.sh` assembles a standalone
+> `<name>.generated.sh` that performs the continuous monitoring.
+
 ## Features
 
 - Simple setup via interactive wizard that generates customized monitoring scripts
