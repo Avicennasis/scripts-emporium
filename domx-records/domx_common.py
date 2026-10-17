@@ -15,6 +15,8 @@ from __future__ import annotations
 import os
 import re
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -142,6 +144,31 @@ def get_token(args_token: Optional[str]) -> Optional[str]:
 
     # No token found in any source
     return None
+
+def default_report_path(prefix: str) -> Path:
+    """
+    Generate the default path for the human-readable audit report.
+
+    Rationale:
+    ----------
+    This places the report in /tmp to avoid cluttering the working directory.
+    The report is a single consolidated text file.
+
+    Format:
+    -------
+    /tmp/{prefix}_report_YYYYMMDD_HHMMSS.txt
+
+    Returns:
+    --------
+    Path
+        A Path object pointing to the timestamped report file in /tmp.
+    """
+    # Generate timestamp matching the outdir format for consistency
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Construct and return the path
+    return Path("/tmp") / f"{prefix}_report_{ts}.txt"
+
 
 def normalize_txt_value(s: Optional[str]) -> str:
     """

@@ -156,6 +156,7 @@ from typing import Any, Dict, List, Optional, Tuple  # Type hints for clarity
 # Third-party HTTP library for API communication
 from domx_common import (
     DOClient,
+    default_report_path,
     get_token,
     normalize_host,
     normalize_txt_value,
@@ -218,29 +219,6 @@ def default_tmp_outdir(prefix: str) -> Path:
 
     # Construct and return the path
     return Path("/tmp") / f"{prefix}_{ts}"
-
-
-def default_report_path() -> Path:
-    """
-    Generate the default path for the grouped audit report.
-
-    Rationale:
-    ----------
-    Similar to default_tmp_outdir(), this places the report in /tmp to avoid
-    cluttering the working directory. The report is a single consolidated
-    text file containing all groups with their domain lists.
-
-    Returns:
-    --------
-    Path
-        A Path object pointing to the timestamped report file.
-        Format: /tmp/do_dns_audit_grouped_report_YYYYMMDD_HHMMSS.txt
-    """
-    # Generate timestamp matching the outdir format for consistency
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Construct and return the path
-    return Path("/tmp") / f"do_dns_audit_grouped_report_{ts}.txt"
 
 
 # =============================================================================
@@ -994,7 +972,7 @@ Security tip: Use the .env file approach and set permissions with:
     # -------------------------------------------------------------------------
     # WRITE TEXT REPORT (always)
     # -------------------------------------------------------------------------
-    report_path = Path(args.report_file).expanduser().resolve() if args.report_file else default_report_path()
+    report_path = Path(args.report_file).expanduser().resolve() if args.report_file else default_report_path("do_dns_audit_grouped")
     write_text_report(report_path, group_items, allow_mail)
     print(f"Wrote text report: {report_path}")
 
