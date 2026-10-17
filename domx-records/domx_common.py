@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -538,3 +538,122 @@ class DOClient:
             page += 1
 
         return recs
+
+
+def dmarc_template(domain: str, dmarc_value: str) -> str:
+    """
+    Normalize a DMARC record into a template for grouping purposes.
+    """
+    # First, normalize the DMARC value (strip quotes, collapse whitespace)
+    v = normalize_txt_value(dmarc_value)
+
+    # Get the domain in lowercase for case-insensitive matching
+    d = domain.lower()
+
+    # Replace "+<domain>@" occurrences with "+<DOMAIN>@"
+    # This pattern matches the common plus-tagging format in rua/ruf addresses
+    v = re.sub(rf"\+{re.escape(d)}@", "+<DOMAIN>@", v, flags=re.IGNORECASE)
+
+    # Additional whitespace normalization
+    return " ".join(v.split())
+
+
+def summarize_domain(domain: str, recs: List[Dict[str, Any]], dead_mx_host: str) -> Dict[str, Any]:
+    """
+    Build a compact summary of email-related DNS state for a domain.
+    """
+    # Categorize records by type for easier processing
+    mx = [r for r in recs if r.get("type") == "MX"]
+    txt = [r for r in recs if r.get("type") == "TXT"]
+    cname = [r for r in recs if r.get("type") == "CNAME"]
+
+    # -------------------------------------------------------------------------
+    # POSTURE DETERMINATION
+    # -------------------------------------------------------------------------
+    # DigitalOcean uses '@' for the zone apex (root domain).
+    mx_root = [r for r in mx if (r.get("name") in ("@", ""))]
+
+    # Default posture is "none" (no MX records)
+    posture = "none"
+
+    if mx:
+        posture = "active"
+        if mx_root:
+            targets = [normalize_host(r.get("data") or "") for r in mx_root]
+            dead = normalize_host(dead_mx_host)
+            if targets and all(t == dead for t in targets):
+                posture = "dead"
+
+    # -------------------------------------------------------------------------
+    # SPF ANALYSIS
+    # -------------------------------------------------------------------------
+    spf_txts: List[str] = []
+    for r in txt:
+        if r.get("name") in ("@", ""):
+            val = normalize_txt_value(r.get("data") or "")
+            if val.lower().startswith("v=spf1"):
+                spf_txts.append(val)
+
+    # -------------------------------------------------------------------------
+    # DMARC ANALYSIS
+    # -------------------------------------------------------------------------
+    dmarc_txts: List[str] = []
+    for r in txt:
+        if r.get("name") == "_dmarc":
+            dmarc_txts.append(normalize_txt_value(r.get("data") or ""))
+
+    dmarc_p = None
+    dmarc_rua = None
+    dmarc_tpl = None
+    if dmarc_txts:
+        dmarc_p = parse_tag_value(dmarc_txts[0], "p")
+        dmarc_rua = parse_tag_value(dmarc_txts[0], "rua")
+        dmarc_tpl = dmarc_template(domain, dmarc_txts[0])
+
+    # -------------------------------------------------------------------------
+    # DKIM ANALYSIS
+    # -------------------------------------------------------------------------
+    dkim_like = [r for r in (txt + cname) if "_domainkey" in (r.get("name") or "")]
+
+    # -------------------------------------------------------------------------
+    # WILDCARD ANALYSIS
+    # -------------------------------------------------------------------------
+    wildcards = [r for r in recs if (r.get("name") or "").startswith("*")]
+
+    # -------------------------------------------------------------------------
+    # FORMAT MX FOR DISPLAY
+    # -------------------------------------------------------------------------
+    mx_compact: List[str] = []
+    for r in mx_root[:5]:
+        pr = r.get("priority")
+        mx_compact.append(f"{r.get('data')}({pr})")
+
+    if len(mx_root) > 5:
+        mx_compact.append(f"+{len(mx_root)-5} more")
+
+    # -------------------------------------------------------------------------
+    # NORMALIZE ROOT MX FOR GROUPING
+    # -------------------------------------------------------------------------
+    mx_root_norm: List[Tuple[str, int]] = []
+    for r in mx_root:
+        target = normalize_host(r.get("data") or "")
+        priority = int(r.get("priority") or 0)
+        mx_root_norm.append((target, priority))
+    mx_root_norm.sort()
+
+    return {
+        "domain": domain,
+        "posture": posture,
+        "mx_root": mx_compact,          # Formatted for display
+        "mx_root_norm": mx_root_norm,   # For signature/grouping
+        "mx_root_count": len(mx_root),
+        "mx_total_count": len(mx),
+        "spf": spf_txts,
+        "spf_count": len(spf_txts),
+        "dmarc": dmarc_txts[:1],
+        "dmarc_p": dmarc_p,
+        "dmarc_rua": dmarc_rua,
+        "dmarc_template": dmarc_tpl,    # Template for grouping
+        "dkim_like_count": len(dkim_like),
+        "wildcard_count": len(wildcards),
+    }
