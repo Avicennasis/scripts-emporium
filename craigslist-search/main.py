@@ -327,6 +327,7 @@ def send_alert(subject: str, body: str) -> None:
     # so we only include -i if it looks like a real sendmail binary.
     if os.path.basename(sendmail) == "sendmail":
         cmd.append("-i")
+    cmd.append("--")
     cmd.append(alert_to)
 
     p = subprocess.run(cmd, input=msg.as_bytes(), capture_output=True)
