@@ -627,49 +627,59 @@ emit_match() {
 
 
 main() {
-  local opts
-  if ! opts=$(getopt -o h --long \
-    help,version,city:,section:,pages:,start:,step:,sort:,query:,regex:,output:,append,format:,print-urls,delay:,timeout:,retries:,user-agent:,parser:,verbose,email-to:,email-from:,email-when:,email-per:,html-off \
-    -n 'cl-keyword-scrape.sh' -- "$@"); then
-    usage >&2
-    exit 1
-  fi
-  eval set -- "$opts"
-
-  while true; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
-      --city) CITY="$2"; shift 2 ;;
-      --section) SECTION="$2"; shift 2 ;;
-      --pages) PAGES="$2"; shift 2 ;;
-      --start) START="$2"; shift 2 ;;
-      --step) STEP="$2"; shift 2 ;;
-      --sort) SORT="$2"; shift 2 ;;
-      --query) QUERY="$2"; shift 2 ;;
-      --regex) REGEX="$2"; shift 2 ;;
-      --output) OUTPUT="$2"; shift 2 ;;
-      --append) APPEND=1; shift ;;
-      --format) FORMAT="$2"; shift 2 ;;
-      --print-urls) PRINT_URLS_ONLY=1; shift ;;
-      --delay) DELAY="$2"; shift 2 ;;
-      --timeout) TIMEOUT="$2"; shift 2 ;;
-      --retries) RETRIES="$2"; shift 2 ;;
-      --user-agent) USER_AGENT="$2"; shift 2 ;;
-      --parser) PARSER="$2"; shift 2 ;;
-      --verbose) VERBOSE=1; shift ;;
-      --email-to) EMAIL_TO="$2"; shift 2 ;;
-      --email-from) EMAIL_FROM="$2"; shift 2 ;;
-      --email-when) EMAIL_WHEN="$2"; shift 2 ;;
-      --email-per) EMAIL_PER="$2"; shift 2 ;;
-      --html-off) HTML_EMAIL=0; shift ;;
-      --version) printf '%s\n' "$VERSION"; exit 0 ;;
-      -h|--help) usage; exit 0 ;;
-      --) shift; break ;;
-      *) break ;;
+      --city)          [[ $# -ge 2 ]] || die_usage "Missing value for $1"; CITY="$2"; shift 2 ;;
+      --city=*)        CITY="${1#*=}"; shift ;;
+      --section)       [[ $# -ge 2 ]] || die_usage "Missing value for $1"; SECTION="$2"; shift 2 ;;
+      --section=*)     SECTION="${1#*=}"; shift ;;
+      --pages)         [[ $# -ge 2 ]] || die_usage "Missing value for $1"; PAGES="$2"; shift 2 ;;
+      --pages=*)       PAGES="${1#*=}"; shift ;;
+      --start)         [[ $# -ge 2 ]] || die_usage "Missing value for $1"; START="$2"; shift 2 ;;
+      --start=*)       START="${1#*=}"; shift ;;
+      --step)          [[ $# -ge 2 ]] || die_usage "Missing value for $1"; STEP="$2"; shift 2 ;;
+      --step=*)        STEP="${1#*=}"; shift ;;
+      --sort)          [[ $# -ge 2 ]] || die_usage "Missing value for $1"; SORT="$2"; shift 2 ;;
+      --sort=*)        SORT="${1#*=}"; shift ;;
+      --query)         [[ $# -ge 2 ]] || die_usage "Missing value for $1"; QUERY="$2"; shift 2 ;;
+      --query=*)       QUERY="${1#*=}"; shift ;;
+      --regex)         [[ $# -ge 2 ]] || die_usage "Missing value for $1"; REGEX="$2"; shift 2 ;;
+      --regex=*)       REGEX="${1#*=}"; shift ;;
+      --output)        [[ $# -ge 2 ]] || die_usage "Missing value for $1"; OUTPUT="$2"; shift 2 ;;
+      --output=*)      OUTPUT="${1#*=}"; shift ;;
+      --append)        APPEND=1; shift ;;
+      --format)        [[ $# -ge 2 ]] || die_usage "Missing value for $1"; FORMAT="$2"; shift 2 ;;
+      --format=*)      FORMAT="${1#*=}"; shift ;;
+      --print-urls)    PRINT_URLS_ONLY=1; shift ;;
+      --delay)         [[ $# -ge 2 ]] || die_usage "Missing value for $1"; DELAY="$2"; shift 2 ;;
+      --delay=*)       DELAY="${1#*=}"; shift ;;
+      --timeout)       [[ $# -ge 2 ]] || die_usage "Missing value for $1"; TIMEOUT="$2"; shift 2 ;;
+      --timeout=*)     TIMEOUT="${1#*=}"; shift ;;
+      --retries)       [[ $# -ge 2 ]] || die_usage "Missing value for $1"; RETRIES="$2"; shift 2 ;;
+      --retries=*)     RETRIES="${1#*=}"; shift ;;
+      --user-agent)    [[ $# -ge 2 ]] || die_usage "Missing value for $1"; USER_AGENT="$2"; shift 2 ;;
+      --user-agent=*)  USER_AGENT="${1#*=}"; shift ;;
+      --parser)        [[ $# -ge 2 ]] || die_usage "Missing value for $1"; PARSER="$2"; shift 2 ;;
+      --parser=*)      PARSER="${1#*=}"; shift ;;
+      --verbose)       VERBOSE=1; shift ;;
+      --email-to)      [[ $# -ge 2 ]] || die_usage "Missing value for $1"; EMAIL_TO="$2"; shift 2 ;;
+      --email-to=*)    EMAIL_TO="${1#*=}"; shift ;;
+      --email-from)    [[ $# -ge 2 ]] || die_usage "Missing value for $1"; EMAIL_FROM="$2"; shift 2 ;;
+      --email-from=*)  EMAIL_FROM="${1#*=}"; shift ;;
+      --email-when)    [[ $# -ge 2 ]] || die_usage "Missing value for $1"; EMAIL_WHEN="$2"; shift 2 ;;
+      --email-when=*)  EMAIL_WHEN="${1#*=}"; shift ;;
+      --email-per)     [[ $# -ge 2 ]] || die_usage "Missing value for $1"; EMAIL_PER="$2"; shift 2 ;;
+      --email-per=*)   EMAIL_PER="${1#*=}"; shift ;;
+      --html-off)      HTML_EMAIL=0; shift ;;
+      --version)       printf '%s\n' "$VERSION"; exit 0 ;;
+      -h|--help)       usage; exit 0 ;;
+      --)              shift; break ;;
+      -*)              die_usage "Unknown option: $1" ;;
+      *)               break ;;
     esac
   done
 
   need_cmd curl
-  need_cmd getopt
   need_cmd awk
   need_cmd sed
   need_cmd grep
