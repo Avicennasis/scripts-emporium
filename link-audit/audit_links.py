@@ -5,7 +5,6 @@ import time
 import json
 import os
 import argparse
-import sys
 from datetime import datetime
 import threading
 import collections
