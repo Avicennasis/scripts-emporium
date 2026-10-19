@@ -244,7 +244,8 @@ def report_strings(fd: int, nblocks: int, blocks: int, max_hits: int) -> None:
         buf = pread_full(fd, BLOCK, blk * BLOCK)
         if len(buf) != BLOCK:
             continue
-        for m in STRING_PATTERN.findall(buf):
+        for match in STRING_PATTERN.finditer(buf):
+            m = match.group(0)
             if INTERESTING_PATTERN.search(m):
                 s = m.decode("ascii", "ignore").strip()
                 print(f"  [{100.0 * blk / nblocks:5.1f}%] {s[:100]}")
