@@ -349,6 +349,98 @@ def build_search_url(region: str, category: str) -> str:
     return f"https://{region}.craigslist.org/search/{category}"
 
 
+def fetch_and_dedupe(
+    session: requests.Session,
+    search_url: str,
+    site_root: str,
+    query: str | None,
+    pages: int,
+    page_size: int,
+    sleep_seconds: float,
+) -> list[Listing]:
+    """Fetch search result pages and deduplicate listings by ID."""
+    all_listings: list[Listing] = []
+
+    for page in range(max(1, pages)):
+        offset = page * page_size
+        params: dict[str, object] = {"sort": "date"}
+        if query:
+            params["query"] = query
+        if offset:
+            params["s"] = offset
+
+        html = http_get_text(session, search_url, params=params)
+        listings = parse_search_results(html, site_root)
+
+        all_listings.extend(listings)
+        time.sleep(sleep_seconds)
+
+    by_id: dict[str, Listing] = {}
+    for lst in all_listings:
+        by_id.setdefault(lst.id, lst)
+
+    return list(by_id.values())
+
+
+def process_new_listings(
+    session: requests.Session,
+    listings_unique: list[Listing],
+    seen: dict[str, None],
+    kw_re: re.Pattern,
+    sleep_seconds: float,
+    dry_run: bool,
+) -> tuple[int, int, int, int]:
+    """Process new listings: fetch post bodies, match keywords, and send alerts."""
+    already_seen = 0
+    processed_new = 0
+    matched = 0
+    alerts_sent = 0
+
+    for listing in listings_unique:
+        if listing.id in seen:
+            already_seen += 1
+            continue
+
+        processed_new += 1
+        # Mark as seen early to avoid repeats even if something fails mid-run
+        seen[listing.id] = None
+
+        try:
+            post_html = http_get_text(session, listing.link)
+        except Exception as e:
+            print(f"[skip] could not fetch post: {listing.link} ({e})", file=sys.stderr)
+            time.sleep(sleep_seconds)
+            continue
+
+        post_text = extract_post_text(post_html)
+        if not post_text:
+            time.sleep(sleep_seconds)
+            continue
+
+        m = kw_re.search(post_text)
+        if m:
+            matched += 1
+            matched_word = m.group(0)
+
+            subject = f"Craigslist match: {matched_word}"
+            message_body = (
+                f"{listing.title}\n"
+                f"{listing.link}\n\n"
+                f"Matched: {matched_word}\n"
+            )
+
+            if dry_run:
+                print(f"[dry-run] match '{matched_word}' -> {listing.link}")
+            else:
+                send_alert(subject, message_body)
+                print(f"[alert] match '{matched_word}' -> {listing.link}")
+                alerts_sent += 1
+
+        time.sleep(sleep_seconds)
+
+    return already_seen, processed_new, matched, alerts_sent
+
+
 def run_once(
     region: str,
     category: str,
@@ -378,79 +470,15 @@ def run_once(
     kw_re = compile_keyword_regex(keywords)
     seen = load_seen(seen_file)
 
-    total_found = 0
-    already_seen = 0
-    processed_new = 0
-    matched = 0
-    alerts_sent = 0
-
     with requests.Session() as session:
-        all_listings: list[Listing] = []
-
-        # Pull multiple search pages (page 0 has no offset; later pages use s=<offset>)
-        for page in range(max(1, pages)):
-            offset = page * page_size
-            params: dict[str, object] = {"sort": "date"}
-            if query:
-                params["query"] = query
-            if offset:
-                params["s"] = offset
-
-            html = http_get_text(session, search_url, params=params)
-            listings = parse_search_results(html, site_root)
-
-            all_listings.extend(listings)
-            time.sleep(sleep_seconds)
-
-        # Dedupe across pages by listing id (some overlap happens in paging)
-        by_id: dict[str, Listing] = {}
-        for lst in all_listings:
-            by_id.setdefault(lst.id, lst)
-
-        listings_unique = list(by_id.values())
+        listings_unique = fetch_and_dedupe(
+            session, search_url, site_root, query, pages, page_size, sleep_seconds
+        )
         total_found = len(listings_unique)
 
-        for listing in listings_unique:
-            if listing.id in seen:
-                already_seen += 1
-                continue
-
-            processed_new += 1
-            # Mark as seen early to avoid repeats even if something fails mid-run
-            seen[listing.id] = None
-
-            try:
-                post_html = http_get_text(session, listing.link)
-            except Exception as e:
-                print(f"[skip] could not fetch post: {listing.link} ({e})", file=sys.stderr)
-                time.sleep(sleep_seconds)
-                continue
-
-            post_text = extract_post_text(post_html)
-            if not post_text:
-                time.sleep(sleep_seconds)
-                continue
-
-            m = kw_re.search(post_text)
-            if m:
-                matched += 1
-                matched_word = m.group(0)
-
-                subject = f"Craigslist match: {matched_word}"
-                message_body = (
-                    f"{listing.title}\n"
-                    f"{listing.link}\n\n"
-                    f"Matched: {matched_word}\n"
-                )
-
-                if dry_run:
-                    print(f"[dry-run] match '{matched_word}' -> {listing.link}")
-                else:
-                    send_alert(subject, message_body)
-                    print(f"[alert] match '{matched_word}' -> {listing.link}")
-                    alerts_sent += 1
-
-            time.sleep(sleep_seconds)
+        already_seen, processed_new, matched, alerts_sent = process_new_listings(
+            session, listings_unique, seen, kw_re, sleep_seconds, dry_run
+        )
 
     save_seen(seen_file, seen)
 
