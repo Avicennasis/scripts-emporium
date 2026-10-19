@@ -137,12 +137,15 @@ def check_link(url, user_agent, timeout, verbose=False):
         if 200 <= r.status_code < 300:
             if 'text/html' in content_type or 'application/xhtml+xml' in content_type:
                 # Read more content (up to 1MB)
-                content = b""
+                chunks = []
+                content_len = 0
                 for chunk in r.iter_content(chunk_size=8192):
-                    content += chunk
-                    if len(content) > 1024 * 1024: 
+                    chunks.append(chunk)
+                    content_len += len(chunk)
+                    if content_len > 1024 * 1024:
                         break
                 
+                content = b"".join(chunks)
                 soup = BeautifulSoup(content, 'html.parser')
                 
                 if soup.title and soup.title.string:
