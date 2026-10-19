@@ -146,6 +146,7 @@ from typing import Any, Dict, List, Optional  # Type hints for better code clari
 from domx_common import (
     DOClient,
     get_token,
+    load_allowlist,
     normalize_host,
     normalize_txt_value,
     parse_tag_value,
@@ -237,75 +238,6 @@ def default_report_path() -> Path:
 # =============================================================================
 # DIGITALOCEAN API CLIENT CLASS
 # =============================================================================
-
-
-# =============================================================================
-# MAIL DOMAIN ALLOWLIST SUPPORT
-# =============================================================================
-
-def load_allowlist(path: Optional[str]) -> Optional[set]:
-    """
-    Load a list of domains that should legitimately process email.
-
-    Purpose:
-    --------
-    In many organizations, most domains should NOT send or receive email.
-    They exist for web hosting, redirects, brand protection, etc. Only a
-    small subset actually needs mail capability.
-
-    This allowlist lets you specify which domains SHOULD have active mail,
-    enabling the audit to flag:
-    - Allowlisted domains that are incorrectly locked down (ERROR)
-    - Non-allowlisted domains that unexpectedly have mail enabled (WARN)
-
-    File Format:
-    ------------
-    Simple text file with one domain per line:
-
-        # Mail domains allowlist
-        # Lines starting with # are comments
-
-        mail.example.com
-        support.example.com
-        example.org
-
-    Parameters:
-    -----------
-    path : Optional[str]
-        Path to the allowlist file. If None or empty, returns None
-        (meaning all domains are treated equally, no WARN/ERROR flags).
-
-    Returns:
-    --------
-    Optional[set]
-        Set of lowercase domain names from the file, or None if no path.
-        Returns empty set if file exists but is empty/all comments.
-
-    Raises:
-    -------
-    FileNotFoundError
-        If the specified file doesn't exist.
-    """
-    # If no path provided, return None to indicate no allowlist
-    if not path:
-        return None
-
-    allowed = set()
-
-    # Read and parse the allowlist file
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            # Clean up the line
-            s = line.strip().lower()
-
-            # Skip empty lines and comments
-            if not s or s.startswith("#"):
-                continue
-
-            # Add to the set
-            allowed.add(s)
-
-    return allowed
 
 
 # =============================================================================
