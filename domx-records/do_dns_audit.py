@@ -145,6 +145,7 @@ from typing import Any, Dict, List, Optional  # Type hints for better code clari
 # Third-party HTTP library for API communication
 from domx_common import (
     DOClient,
+    default_report_path,
     get_token,
     load_allowlist,
     normalize_host,
@@ -207,32 +208,6 @@ def default_outdir() -> Path:
 
     # Construct and return the path
     return Path("/tmp") / f"do_dns_audit_{ts}"
-
-
-def default_report_path() -> Path:
-    """
-    Generate the default path for the human-readable audit report.
-
-    Rationale:
-    ----------
-    Similar to default_outdir(), this places the report in /tmp to avoid
-    cluttering the working directory. The report is a single consolidated
-    text file containing summaries for all domains.
-
-    Format:
-    -------
-    /tmp/do_dns_audit_report_YYYYMMDD_HHMMSS.txt
-
-    Returns:
-    --------
-    Path
-        A Path object pointing to the timestamped report file in /tmp.
-    """
-    # Generate timestamp matching the outdir format for consistency
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Construct and return the path
-    return Path("/tmp") / f"do_dns_audit_report_{ts}.txt"
 
 
 # =============================================================================
@@ -635,7 +610,7 @@ Security tip: Use the .env file approach and set permissions with:
     outdir.mkdir(parents=True, exist_ok=True)
 
     # Determine report file path
-    report_path = Path(args.report_file).expanduser().resolve() if args.report_file else default_report_path()
+    report_path = Path(args.report_file).expanduser().resolve() if args.report_file else default_report_path("do_dns_audit")
 
     # -------------------------------------------------------------------------
     # LOAD OPTIONAL ALLOWLIST
