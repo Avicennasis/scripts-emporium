@@ -61,6 +61,52 @@ def log(msg, verbose_flag=False, is_verbose_msg=False):
         return
     print(msg)
 
+def extract_metadata(r, content_type):
+    """
+    Helper function to extract title and description from an HTTP response.
+    """
+    metadata = {'title': None, 'description': None}
+
+    if 200 <= r.status_code < 300:
+        if 'text/html' in content_type or 'application/xhtml+xml' in content_type:
+            # Read more content (up to 1MB)
+            chunks = []
+            content_len = 0
+            for chunk in r.iter_content(chunk_size=8192):
+                chunks.append(chunk)
+                content_len += len(chunk)
+                if content_len > 1024 * 1024:
+                    break
+
+            content = b"".join(chunks)
+            soup = BeautifulSoup(content, 'html.parser')
+
+            if soup.title and soup.title.string:
+                metadata['title'] = soup.title.string.strip()
+
+            if not metadata['title']:
+                og_title = soup.find('meta', attrs={'property': 'og:title'})
+                if og_title and og_title.get('content'):
+                     metadata['title'] = og_title['content'].strip()
+
+            meta = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
+            if meta and meta.get('content'):
+                metadata['description'] = meta['content'].strip()
+
+            if not metadata['description']:
+                h1 = soup.find('h1')
+                if h1:
+                    h1_text = h1.get_text(" ", strip=True)
+                    if len(h1_text) > 100: h1_text = h1_text[:100] + "..."
+                    metadata['description'] = f"Heading: {h1_text}"
+        else:
+            size = r.headers.get('Content-Length', 'unknown size')
+            metadata['description'] = f"File: {content_type} ({size} bytes)"
+    else:
+        metadata['description'] = f"HTTP {r.status_code}"
+
+    return metadata
+
 def check_link(url, user_agent, timeout, verbose=False):
     """
     Performs the audit on a single URL.
@@ -133,44 +179,10 @@ def check_link(url, user_agent, timeout, verbose=False):
         content_type = r.headers.get('Content-Type', '').lower()
         result['content_type'] = content_type
         
-        # --- Extract Metadata (if HTML) ---
-        if 200 <= r.status_code < 300:
-            if 'text/html' in content_type or 'application/xhtml+xml' in content_type:
-                # Read more content (up to 1MB)
-                chunks = []
-                content_len = 0
-                for chunk in r.iter_content(chunk_size=8192):
-                    chunks.append(chunk)
-                    content_len += len(chunk)
-                    if content_len > 1024 * 1024:
-                        break
-                
-                content = b"".join(chunks)
-                soup = BeautifulSoup(content, 'html.parser')
-                
-                if soup.title and soup.title.string:
-                    result['title'] = soup.title.string.strip()
-                
-                if not result['title']:
-                    og_title = soup.find('meta', attrs={'property': 'og:title'})
-                    if og_title and og_title.get('content'):
-                         result['title'] = og_title['content'].strip()
-
-                meta = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
-                if meta and meta.get('content'):
-                    result['description'] = meta['content'].strip()
-                
-                if not result['description']:
-                    h1 = soup.find('h1')
-                    if h1:
-                        h1_text = h1.get_text(" ", strip=True)
-                        if len(h1_text) > 100: h1_text = h1_text[:100] + "..."
-                        result['description'] = f"Heading: {h1_text}"
-            else:
-                size = r.headers.get('Content-Length', 'unknown size')
-                result['description'] = f"File: {content_type} ({size} bytes)"
-        else:
-            result['description'] = f"HTTP {r.status_code}"
+        # --- Extract Metadata ---
+        metadata = extract_metadata(r, content_type)
+        result['title'] = metadata['title']
+        result['description'] = metadata['description']
 
     # --- Error Handling ---
     except requests.exceptions.Timeout:
