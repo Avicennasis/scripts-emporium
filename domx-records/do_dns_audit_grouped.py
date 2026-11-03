@@ -146,6 +146,7 @@ from __future__ import annotations
 
 # Standard library imports for core functionality
 import argparse      # Command-line argument parsing
+import concurrent.futures # Concurrent execution for faster API calls
 import json          # JSON serialization for output files and signature creation
 import re            # Regular expressions for parsing DNS record values
 import sys           # System exit codes
@@ -595,31 +596,34 @@ Security tip: Use the .env file approach and set permissions with:
     # Groups: signature -> list of domains with that signature
     groups: Dict[str, List[str]] = {}
 
-    # Process each domain
-    for d in domains:
+    # Process each domain concurrently
+    def process_domain(d: str) -> Optional[Tuple[str, List[Dict[str, Any]], Dict[str, Any], str]]:
         try:
-            # Fetch all DNS records for this domain
             recs = client.list_records(d)
         except Exception as e:
-            # Log error but continue with other domains
-            # One bad zone shouldn't stop the whole audit
-            print(f"[ERROR] Failed to fetch records for {d}: {e}")
-            continue
+            print(f"[ERROR] Failed to process domain {d}: {e}")
+            return None
 
-        # Optional: write raw record dumps per domain
-        if args.dump_records and outdir is not None:
-            (outdir / f"{d}.records.json").write_text(
-                json.dumps(recs, indent=2, sort_keys=True),
-                encoding="utf-8"
-            )
-
-        # Build summary for this domain
+        # Local parsing should not be hidden behind API call error handling.
         s = summarize_domain(d, recs, dead_mx_host=args.dead_mx_host)
-        summaries.append(s)
-
-        # Compute signature and add to appropriate group
         sig = signature(s)
-        groups.setdefault(sig, []).append(d)
+        return (d, recs, s, sig)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # executor.map preserves the order of `domains` so results are deterministic
+        for result in executor.map(process_domain, domains):
+            if result:
+                d, recs, s, sig = result
+
+                # Optional: write raw record dumps per domain
+                if args.dump_records and outdir is not None:
+                    (outdir / f"{d}.records.json").write_text(
+                        json.dumps(recs, indent=2, sort_keys=True),
+                        encoding="utf-8"
+                    )
+
+                summaries.append(s)
+                groups.setdefault(sig, []).append(d)
 
     # -------------------------------------------------------------------------
     # SORT GROUPS BY SIZE (largest first)
