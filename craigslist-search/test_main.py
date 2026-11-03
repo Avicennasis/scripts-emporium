@@ -3,8 +3,6 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
-import pytest
-
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
