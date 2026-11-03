@@ -135,11 +135,11 @@ AUTHOR:
 from __future__ import annotations
 
 # Standard library imports for core functionality
-import argparse      # Command-line argument parsing
-import json          # JSON serialization for output files
-import sys           # System exit codes and stderr
+import argparse  # Command-line argument parsing
+import json  # JSON serialization for output files
+import sys  # System exit codes and stderr
 from datetime import datetime  # Timestamps for output file naming
-from pathlib import Path       # Modern, cross-platform file path handling
+from pathlib import Path  # Modern, cross-platform file path handling
 from typing import Any, Dict, List, Optional  # Type hints for better code clarity
 
 # Third-party HTTP library for API communication
@@ -175,6 +175,7 @@ from domx_common import (
 # =============================================================================
 # These functions generate default paths in /tmp to avoid cluttering the
 # working directory with output files. Users can override via CLI arguments.
+
 
 def default_outdir() -> Path:
     """
@@ -219,6 +220,7 @@ def default_outdir() -> Path:
 # =============================================================================
 # DOMAIN ANALYSIS AND SUMMARIZATION
 # =============================================================================
+
 
 def status_for(domain: str, posture: str, allow_mail: Optional[set]) -> str:
     """
@@ -277,7 +279,10 @@ def status_for(domain: str, posture: str, allow_mail: Optional[set]) -> str:
 # REPORT GENERATION
 # =============================================================================
 
-def write_pretty_report(path: Path, outdir: Path, summaries: List[Dict[str, Any]], allow_mail: Optional[set]) -> None:
+
+def write_pretty_report(
+    path: Path, outdir: Path, summaries: List[Dict[str, Any]], allow_mail: Optional[set]
+) -> None:
     """
     Write a human-readable text report summarizing all domains.
 
@@ -353,6 +358,7 @@ def write_pretty_report(path: Path, outdir: Path, summaries: List[Dict[str, Any]
 # COMMAND-LINE INTERFACE
 # =============================================================================
 
+
 def main() -> None:
     """
     Main entry point for the DNS audit script.
@@ -383,48 +389,49 @@ Authentication priority:
 
 Security tip: Use the .env file approach and set permissions with:
   chmod 600 .env
-        """
+        """,
     )
 
     # Authentication argument
     ap.add_argument(
         "--token",
         default=None,
-        help="DigitalOcean API token. Prefer using .env file or DO_TOKEN env var for security."
+        help="DigitalOcean API token. Prefer using .env file or DO_TOKEN env var for security.",
     )
 
     # Output path arguments (default to /tmp to avoid clutter)
     ap.add_argument(
         "--outdir",
         default="",
-        help="Directory for per-domain JSON record dumps (default: /tmp/do_dns_audit_<ts>/)"
+        help="Directory for per-domain JSON record dumps (default: /tmp/do_dns_audit_<ts>/)",
     )
     ap.add_argument(
         "--report-file",
         default="",
-        help="Pretty TXT report path (default: /tmp/do_dns_audit_report_<ts>.txt)"
+        help="Pretty TXT report path (default: /tmp/do_dns_audit_report_<ts>.txt)",
     )
 
     # Mail expectation arguments
     ap.add_argument(
         "--mail-domains-file",
         default="",
-        help="Allowlist of domains that SHOULD process mail (one per line)"
+        help="Allowlist of domains that SHOULD process mail (one per line)",
     )
 
     # Dead-mail heuristic configuration
     ap.add_argument(
         "--dead-mx-host",
         default="mail.invalid",
-        help="Hostname used as dead-end MX target when mail is disabled (default: mail.invalid)"
+        help="Hostname used as dead-end MX target when mail is disabled (default: mail.invalid)",
     )
 
     # Optional JSON output
     ap.add_argument(
-        "--dump-json", "--dump_json",
+        "--dump-json",
+        "--dump_json",
         dest="dump_json",
         action="store_true",
-        help="Also write summary.json and summary.ndjson to outdir"
+        help="Also write summary.json and summary.ndjson to outdir",
     )
     ap.set_defaults(dump_json=False)
 
@@ -438,7 +445,9 @@ Security tip: Use the .env file approach and set permissions with:
     token = get_token(args.token)
 
     if not token:
-        print("Missing token. Provide via .env file (DO_TOKEN=...), environment variable, or --token.")
+        print(
+            "Missing token. Provide via .env file (DO_TOKEN=...), environment variable, or --token."
+        )
         print("See --help for details on authentication options.")
         sys.exit(2)
 
@@ -446,16 +455,24 @@ Security tip: Use the .env file approach and set permissions with:
     # OUTPUT PATH SETUP
     # -------------------------------------------------------------------------
     # Determine output directory (use user-provided or generate default)
-    outdir = Path(args.outdir).expanduser().resolve() if args.outdir else default_outdir()
+    outdir = (
+        Path(args.outdir).expanduser().resolve() if args.outdir else default_outdir()
+    )
     outdir.mkdir(parents=True, exist_ok=True)
 
     # Determine report file path
-    report_path = Path(args.report_file).expanduser().resolve() if args.report_file else default_report_path("do_dns_audit")
+    report_path = (
+        Path(args.report_file).expanduser().resolve()
+        if args.report_file
+        else default_report_path("do_dns_audit")
+    )
 
     # -------------------------------------------------------------------------
     # LOAD OPTIONAL ALLOWLIST
     # -------------------------------------------------------------------------
-    allow_mail = load_allowlist(args.mail_domains_file) if args.mail_domains_file else None
+    allow_mail = (
+        load_allowlist(args.mail_domains_file) if args.mail_domains_file else None
+    )
 
     # -------------------------------------------------------------------------
     # FETCH DATA AND PERFORM AUDIT
@@ -470,21 +487,19 @@ Security tip: Use the .env file approach and set permissions with:
     # Process each domain
     summaries: List[Dict[str, Any]] = []
 
+    # Fetch all records concurrently
+    records_by_domain = client.get_all_records(domains)
+
     for d in domains:
-        try:
-            # Fetch all DNS records for this domain
-            recs = client.list_records(d)
-        except Exception as e:
-            # Log error but continue with other domains
-            # One bad zone shouldn't kill the whole audit
-            print(f"[ERROR] {d}: {e}")
+        if d not in records_by_domain:
             continue
+
+        recs = records_by_domain[d]
 
         # Always dump full records for inspection/debugging
         # This is useful for manual review or debugging issues
         (outdir / f"{d}.records.json").write_text(
-            json.dumps(recs, indent=2, sort_keys=True),
-            encoding="utf-8"
+            json.dumps(recs, indent=2, sort_keys=True), encoding="utf-8"
         )
 
         # Build summary and add to list
@@ -501,7 +516,9 @@ Security tip: Use the .env file approach and set permissions with:
         # Formatted output for terminal
         print(f"[{st:18}] {d:30} posture={s['posture']:6}  MX@={mx_str}")
         print(f"                  SPF={spf_str}")
-        print(f"                  DMARC p={dmarc_p}  DKIM_like={s['dkim_like_count']}  wildcards={s['wildcard_count']}")
+        print(
+            f"                  DMARC p={dmarc_p}  DKIM_like={s['dkim_like_count']}  wildcards={s['wildcard_count']}"
+        )
         print()
 
     # -------------------------------------------------------------------------
@@ -518,13 +535,11 @@ Security tip: Use the .env file approach and set permissions with:
     if args.dump_json:
         # Standard JSON (array of objects)
         (outdir / "summary.json").write_text(
-            json.dumps(summaries, indent=2),
-            encoding="utf-8"
+            json.dumps(summaries, indent=2), encoding="utf-8"
         )
         # Newline-delimited JSON (one object per line, better for streaming)
         (outdir / "summary.ndjson").write_text(
-            "\n".join(json.dumps(s) for s in summaries) + "\n",
-            encoding="utf-8"
+            "\n".join(json.dumps(s) for s in summaries) + "\n", encoding="utf-8"
         )
         print(f"Wrote summary.json and summary.ndjson to: {outdir}")
 

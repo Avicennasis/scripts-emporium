@@ -15,6 +15,8 @@ from __future__ import annotations
 import os
 import re
 import time
+import concurrent.futures
+from requests.adapters import HTTPAdapter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -211,6 +213,7 @@ def get_token(args_token: Optional[str]) -> Optional[str]:
     # No token found in any source
     return None
 
+
 def default_report_path(prefix: str) -> Path:
     """
     Generate the default path for the human-readable audit report.
@@ -299,6 +302,7 @@ def normalize_txt_value(s: Optional[str]) -> str:
     # This normalizes "v=spf1   -all" to "v=spf1 -all"
     return " ".join(s.split())
 
+
 def normalize_host(s: Optional[str]) -> str:
     """
     Normalize hostnames for reliable comparisons.
@@ -349,6 +353,7 @@ def normalize_host(s: Optional[str]) -> str:
         s = s[:-1]
 
     return s
+
 
 def parse_tag_value(semi_colon_kv: str, tag: str) -> Optional[str]:
     """
@@ -406,13 +411,12 @@ def parse_tag_value(semi_colon_kv: str, tag: str) -> Optional[str]:
     # - {tag}\s*=\s* matches the tag name with optional whitespace around '='
     # - ([^;]+) captures the value (everything up to the next semicolon)
     m = re.search(
-        rf"(?:^|;\s*){re.escape(tag)}\s*=\s*([^;]+)",
-        semi_colon_kv,
-        flags=re.IGNORECASE
+        rf"(?:^|;\s*){re.escape(tag)}\s*=\s*([^;]+)", semi_colon_kv, flags=re.IGNORECASE
     )
 
     # Return the captured group (trimmed) if found, None otherwise
     return m.group(1).strip() if m else None
+
 
 class DOClient:
     """
@@ -447,8 +451,7 @@ class DOClient:
     ------
         client = DOClient("dop_v1_your_token_here")
         domains = client.list_domains()
-        for domain in domains:
-            records = client.list_records(domain)
+        records_by_domain = client.get_all_records(domains)
     """
 
     def __init__(self, token: str, timeout: int = 30):
@@ -468,12 +471,17 @@ class DOClient:
         # Create a persistent session for connection reuse
         # This improves performance by reusing TCP connections
         self.s = requests.Session()
+        adapter = HTTPAdapter(pool_connections=10, pool_maxsize=10)
+        self.s.mount("https://", adapter)
+        self.s.mount("http://", adapter)
 
         # Configure default headers for all requests
-        self.s.headers.update({
-            "Authorization": f"Bearer {token}",  # Bearer auth per DO API spec
-            "Content-Type": "application/json",   # All responses are JSON
-        })
+        self.s.headers.update(
+            {
+                "Authorization": f"Bearer {token}",  # Bearer auth per DO API spec
+                "Content-Type": "application/json",  # All responses are JSON
+            }
+        )
 
         # Store timeout for use in requests
         self.timeout = timeout
@@ -526,7 +534,7 @@ class DOClient:
             # Check for retryable conditions
             if r.status_code == 429 or (500 <= r.status_code < 600):
                 # Calculate wait time with exponential backoff, capped at 20 seconds
-                wait = min(2 ** attempt, 20)
+                wait = min(2**attempt, 20)
                 time.sleep(wait)
                 continue  # Retry the request
 
@@ -618,7 +626,9 @@ class DOClient:
         # Paginate through all results
         while True:
             # Request current page of records
-            data = self.req("GET", f"/domains/{domain}/records?page={page}&per_page=200")
+            data = self.req(
+                "GET", f"/domains/{domain}/records?page={page}&per_page=200"
+            )
 
             # Add records to our list
             recs.extend(data.get("domain_records", []))
@@ -631,6 +641,37 @@ class DOClient:
             page += 1
 
         return recs
+
+    def get_all_records(
+        self, domains: List[str], max_workers: int = 10
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Concurrently fetch DNS records for multiple domains.
+
+        Parameters:
+        -----------
+        domains : List[str]
+            List of domain names to fetch records for.
+        max_workers : int
+            Maximum number of concurrent threads.
+
+        Returns:
+        --------
+        Dict[str, List[Dict[str, Any]]]
+            Dictionary mapping each domain name to its list of DNS records.
+        """
+        results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_domain = {
+                executor.submit(self.list_records, domain): domain for domain in domains
+            }
+            for future in concurrent.futures.as_completed(future_to_domain):
+                domain = future_to_domain[future]
+                try:
+                    results[domain] = future.result()
+                except Exception as e:
+                    print(f"[ERROR] Failed to fetch records for {domain}: {e}")
+        return results
 
 
 def dmarc_template(domain: str, dmarc_value: str) -> str:
@@ -651,7 +692,9 @@ def dmarc_template(domain: str, dmarc_value: str) -> str:
     return " ".join(v.split())
 
 
-def summarize_domain(domain: str, recs: List[Dict[str, Any]], dead_mx_host: str) -> Dict[str, Any]:
+def summarize_domain(
+    domain: str, recs: List[Dict[str, Any]], dead_mx_host: str
+) -> Dict[str, Any]:
     """
     Build a compact summary of email-related DNS state for a domain.
     """
@@ -737,8 +780,8 @@ def summarize_domain(domain: str, recs: List[Dict[str, Any]], dead_mx_host: str)
     return {
         "domain": domain,
         "posture": posture,
-        "mx_root": mx_compact,          # Formatted for display
-        "mx_root_norm": mx_root_norm,   # For signature/grouping
+        "mx_root": mx_compact,  # Formatted for display
+        "mx_root_norm": mx_root_norm,  # For signature/grouping
         "mx_root_count": len(mx_root),
         "mx_total_count": len(mx),
         "spf": spf_txts,
@@ -746,7 +789,7 @@ def summarize_domain(domain: str, recs: List[Dict[str, Any]], dead_mx_host: str)
         "dmarc": dmarc_txts[:1],
         "dmarc_p": dmarc_p,
         "dmarc_rua": dmarc_rua,
-        "dmarc_template": dmarc_tpl,    # Template for grouping
+        "dmarc_template": dmarc_tpl,  # Template for grouping
         "dkim_like_count": len(dkim_like),
         "wildcard_count": len(wildcards),
     }
