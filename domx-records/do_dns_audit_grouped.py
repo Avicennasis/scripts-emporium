@@ -391,6 +391,50 @@ def group_status(domains: List[str], sig_json: str, allow_mail: Optional[set]) -
 # REPORT GENERATION
 # =============================================================================
 
+def format_group_report(idx: int, sig: str, doms: List[str], allow_mail: Optional[set]) -> List[str]:
+    """
+    Format the text report lines for a single group of domains.
+
+    Parameters:
+    -----------
+    idx : int
+        The group number
+    sig : str
+        The JSON signature for the group
+    doms : List[str]
+        The list of domains in the group
+    allow_mail : Optional[set]
+        Mail domain allowlist for status determination
+
+    Returns:
+    --------
+    List[str]
+        A list of formatted lines for the report.
+    """
+    lines: List[str] = []
+
+    # Sort domains alphabetically for consistent output
+    doms_sorted = sorted(doms)
+
+    # Determine group status based on allowlist
+    status = group_status(doms_sorted, sig, allow_mail)
+
+    # Write group header
+    lines.append(f"=== Group {idx} | {len(doms_sorted)} domains | {status} ===")
+
+    # Write signature details
+    lines.append(pretty_signature(sig))
+
+    # Write complete domain list
+    lines.append("Domains:")
+    for d in doms_sorted:
+        lines.append(f"  - {d}")
+
+    lines.append("")  # Blank line between groups
+
+    return lines
+
+
 def write_text_report(report_path: Path, group_items: List[Tuple[str, List[str]]], allow_mail: Optional[set]) -> None:
     """
     Write a grouped audit report to a text file.
@@ -428,24 +472,7 @@ def write_text_report(report_path: Path, group_items: List[Tuple[str, List[str]]
 
     # Write each group
     for idx, (sig, doms) in enumerate(group_items, start=1):
-        # Sort domains alphabetically for consistent output
-        doms_sorted = sorted(doms)
-
-        # Determine group status based on allowlist
-        status = group_status(doms_sorted, sig, allow_mail)
-
-        # Write group header
-        lines.append(f"=== Group {idx} | {len(doms_sorted)} domains | {status} ===")
-
-        # Write signature details
-        lines.append(pretty_signature(sig))
-
-        # Write complete domain list
-        lines.append("Domains:")
-        for d in doms_sorted:
-            lines.append(f"  - {d}")
-
-        lines.append("")  # Blank line between groups
+        lines.extend(format_group_report(idx, sig, doms, allow_mail))
 
     # Ensure parent directory exists and write the file
     report_path.parent.mkdir(parents=True, exist_ok=True)
