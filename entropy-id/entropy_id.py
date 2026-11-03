@@ -30,7 +30,6 @@ Usage:
 
 Exit status: 0 report produced, 2 refused or unusable target.
 """
-from __future__ import annotations
 
 import argparse
 import math
