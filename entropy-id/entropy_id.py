@@ -165,13 +165,15 @@ def check_target(path: str) -> None:
 # --------------------------------------------------------------------------
 
 def pread_full(fd: int, size: int, offset: int) -> bytes:
-    buf = b""
-    while len(buf) < size:
-        chunk = os.pread(fd, size - len(buf), offset + len(buf))
+    chunks = []
+    total_len = 0
+    while total_len < size:
+        chunk = os.pread(fd, size - total_len, offset + total_len)
         if not chunk:
             break
-        buf += chunk
-    return buf
+        chunks.append(chunk)
+        total_len += len(chunk)
+    return b"".join(chunks)
 
 
 def entropy(buf: bytes) -> float:
