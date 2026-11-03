@@ -138,6 +138,7 @@ from __future__ import annotations
 import argparse      # Command-line argument parsing
 import json          # JSON serialization for output files
 import sys           # System exit codes and stderr
+import concurrent.futures
 from datetime import datetime  # Timestamps for output file naming
 from pathlib import Path       # Modern, cross-platform file path handling
 from typing import Any, Dict, List, Optional  # Type hints for better code clarity
@@ -470,39 +471,45 @@ Security tip: Use the .env file approach and set permissions with:
     # Process each domain
     summaries: List[Dict[str, Any]] = []
 
-    for d in domains:
+    def process_domain(d):
         try:
-            # Fetch all DNS records for this domain
-            recs = client.list_records(d)
+            return d, client.list_records(d), None
         except Exception as e:
-            # Log error but continue with other domains
-            # One bad zone shouldn't kill the whole audit
-            print(f"[ERROR] {d}: {e}")
-            continue
+            return d, None, e
 
-        # Always dump full records for inspection/debugging
-        # This is useful for manual review or debugging issues
-        (outdir / f"{d}.records.json").write_text(
-            json.dumps(recs, indent=2, sort_keys=True),
-            encoding="utf-8"
-        )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_domain = {executor.submit(process_domain, d): d for d in domains}
+        for future in concurrent.futures.as_completed(future_to_domain):
+            d, recs, e = future.result()
+            if e:
+                # Log error but continue with other domains
+                # One bad zone shouldn't kill the whole audit
+                print(f"[ERROR] {d}: {e}")
+                continue
 
-        # Build summary and add to list
-        s = summarize_domain(d, recs, dead_mx_host=args.dead_mx_host)
-        summaries.append(s)
+            # Always dump full records for inspection/debugging
+            # This is useful for manual review or debugging issues
+            (outdir / f"{d}.records.json").write_text(
+                json.dumps(recs, indent=2, sort_keys=True),
+                encoding="utf-8"
+            )
 
-        # Print real-time progress to stdout
-        st = status_for(d, s["posture"], allow_mail)
+            # Build summary and add to list
+            s = summarize_domain(d, recs, dead_mx_host=args.dead_mx_host)
+            summaries.append(s)
 
-        mx_str = ", ".join(s["mx_root"]) if s["mx_root"] else "(none)"
-        spf_str = s["spf"][0] if s["spf"] else "(none)"
-        dmarc_p = s["dmarc_p"] or "(none)"
+            # Print real-time progress to stdout
+            st = status_for(d, s["posture"], allow_mail)
 
-        # Formatted output for terminal
-        print(f"[{st:18}] {d:30} posture={s['posture']:6}  MX@={mx_str}")
-        print(f"                  SPF={spf_str}")
-        print(f"                  DMARC p={dmarc_p}  DKIM_like={s['dkim_like_count']}  wildcards={s['wildcard_count']}")
-        print()
+            mx_str = ", ".join(s["mx_root"]) if s["mx_root"] else "(none)"
+            spf_str = s["spf"][0] if s["spf"] else "(none)"
+            dmarc_p = s["dmarc_p"] or "(none)"
+
+            # Formatted output for terminal
+            print(f"[{st:18}] {d:30} posture={s['posture']:6}  MX@={mx_str}")
+            print(f"                  SPF={spf_str}")
+            print(f"                  DMARC p={dmarc_p}  DKIM_like={s['dkim_like_count']}  wildcards={s['wildcard_count']}")
+            print()
 
     # -------------------------------------------------------------------------
     # GENERATE REPORTS
