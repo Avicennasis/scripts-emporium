@@ -8,7 +8,7 @@ import pytest
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text
+from main import extract_post_text, load_seen
 
 def test_extract_post_text_normal():
     html = '<html><body><section id="postingbody">This is a test post.</section></body></html>'
@@ -79,3 +79,22 @@ class TestSendAlert(unittest.TestCase):
 
         # Verify it is exactly immediately before the recipient
         self.assertEqual(recipient_idx, dash_dash_idx + 1)
+
+def test_load_seen_file_not_exists(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    assert load_seen(path) == {}
+
+def test_load_seen_valid_list(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    path.write_text('["123", "456", 789]', encoding="utf-8")
+    assert load_seen(path) == {"123": None, "456": None, "789": None}
+
+def test_load_seen_invalid_json(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    path.write_text('{"invalid": json', encoding="utf-8")
+    assert load_seen(path) == {}
+
+def test_load_seen_not_a_list(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    path.write_text('{"123": null}', encoding="utf-8")
+    assert load_seen(path) == {}
