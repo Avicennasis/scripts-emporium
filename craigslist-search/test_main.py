@@ -8,7 +8,7 @@ import pytest
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text
+from main import extract_post_text, compile_keyword_regex
 
 def test_extract_post_text_normal():
     html = '<html><body><section id="postingbody">This is a test post.</section></body></html>'
@@ -22,6 +22,34 @@ def test_extract_post_text_missing():
     html = '<html><body><div>No posting body.</div></body></html>'
     assert extract_post_text(html) == ""
 
+def test_compile_keyword_regex_normal():
+    regex = compile_keyword_regex(["apple", "banana", "cherry"])
+    assert regex.search("I want an apple")
+    assert regex.search("BANANA is good")
+    assert not regex.search("I like pear")
+
+def test_compile_keyword_regex_empty():
+    regex = compile_keyword_regex([])
+    assert not regex.search("apple")
+    assert not regex.search("")
+
+    regex_whitespace = compile_keyword_regex([" ", "\t"])
+    assert not regex_whitespace.search("apple")
+    assert not regex_whitespace.search("")
+
+def test_compile_keyword_regex_special_characters():
+    regex = compile_keyword_regex(["C++", "Node.js", "C#"])
+    assert regex.search("I code in C++")
+    assert regex.search("Using Node.js is fun")
+    assert regex.search("Learning C#")
+    assert not regex.search("I code in C+")
+    assert not regex.search("Using NodeXjs")
+
+def test_compile_keyword_regex_case_insensitive():
+    regex = compile_keyword_regex(["Python"])
+    assert regex.search("python")
+    assert regex.search("PYTHON")
+    assert regex.search("pYtHoN")
 
 class TestSendAlert(unittest.TestCase):
     @patch('main.subprocess.run')
