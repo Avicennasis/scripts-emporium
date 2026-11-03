@@ -8,7 +8,17 @@ import pytest
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text
+from main import extract_post_text, is_same_site
+
+def test_is_same_site_match():
+    assert is_same_site("https://sfbay.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is True
+
+def test_is_same_site_different():
+    assert is_same_site("https://seattle.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is False
+
+def test_is_same_site_invalid():
+    assert is_same_site(None, "https://sfbay.craigslist.org") is False
+    assert is_same_site("https://sfbay.craigslist.org", None) is False
 
 def test_extract_post_text_normal():
     html = '<html><body><section id="postingbody">This is a test post.</section></body></html>'
