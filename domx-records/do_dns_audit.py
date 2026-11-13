@@ -148,9 +148,6 @@ from domx_common import (
     default_report_path,
     get_token,
     load_allowlist,
-    normalize_host,
-    normalize_txt_value,
-    parse_tag_value,
     summarize_domain,
 )
 
