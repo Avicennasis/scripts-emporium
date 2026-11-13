@@ -1,4 +1,3 @@
-import pytest
 from entropy_id import entropy
 
 def test_entropy_empty():
