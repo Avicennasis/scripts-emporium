@@ -3,6 +3,8 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
+import json
+from pathlib import Path
 import pytest
 
 # Ensure we can import main
@@ -21,6 +23,32 @@ def test_extract_post_text_boilerplate():
 def test_extract_post_text_missing():
     html = '<html><body><div>No posting body.</div></body></html>'
     assert extract_post_text(html) == ""
+
+def test_save_seen_normal(tmp_path: Path):
+    path = tmp_path / "seen.json"
+    seen = {"id1": None, "id2": None, "id3": None}
+
+    main.save_seen(path, seen)
+
+    assert path.exists()
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    assert data == ["id1", "id2", "id3"]
+
+def test_save_seen_truncates(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(main, "MAX_SEEN_ENTRIES", 2)
+    path = tmp_path / "seen.json"
+    # Dictionaries maintain insertion order in python 3.7+
+    seen = {"id1": None, "id2": None, "id3": None, "id4": None}
+
+    main.save_seen(path, seen)
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    assert data == ["id3", "id4"]
 
 
 class TestSendAlert(unittest.TestCase):
