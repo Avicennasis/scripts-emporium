@@ -10,7 +10,17 @@ import pytest
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text
+from main import extract_post_text, is_same_site
+
+def test_is_same_site_normal():
+    assert is_same_site("https://sfbay.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is True
+    assert is_same_site("https://newyork.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is False
+
+def test_is_same_site_exception():
+    # Feeding an integer to urlparse triggers an AttributeError (which inherits from Exception)
+    # The function should catch it and return False
+    assert is_same_site(123, "https://sfbay.craigslist.org") is False
+    assert is_same_site("https://sfbay.craigslist.org", 123) is False
 
 def test_extract_post_text_normal():
     html = '<html><body><section id="postingbody">This is a test post.</section></body></html>'
