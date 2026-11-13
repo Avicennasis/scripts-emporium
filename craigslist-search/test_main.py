@@ -60,6 +60,12 @@ def test_save_seen_truncates(tmp_path: Path, monkeypatch):
     assert data == ["id3", "id4"]
 
 
+def test_load_seen_invalid_json(tmp_path):
+    path = tmp_path / "invalid.json"
+    path.write_text("invalid json", encoding="utf-8")
+    assert main.load_seen(path) == {}
+
+
 class TestSendAlert(unittest.TestCase):
     @patch('main.subprocess.run')
     @patch('main.shutil.which')
