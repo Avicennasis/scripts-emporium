@@ -1,7 +1,7 @@
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import json
 import os
-import urllib.parse
+from urllib.parse import urlparse, parse_qs
 import argparse
 import sys
 
@@ -76,8 +76,8 @@ class ReportHandler(SimpleHTTPRequestHandler):
         
         if self.path.startswith('/api/remove'):
             try:
-                query = urllib.parse.urlparse(self.path).query
-                params = urllib.parse.parse_qs(query)
+                query = urlparse(self.path).query
+                params = parse_qs(query)
                 target_id = params.get('id', [None])[0]
                 
                 if target_id:
