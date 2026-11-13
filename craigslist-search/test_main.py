@@ -9,7 +9,7 @@ from pathlib import Path
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text, is_same_site, load_seen
+from main import extract_post_text, is_same_site, load_seen, compile_keyword_regex
 
 def test_is_same_site_normal():
     assert is_same_site("https://sfbay.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is True
@@ -32,6 +32,35 @@ def test_extract_post_text_boilerplate():
 def test_extract_post_text_missing():
     html = '<html><body><div>No posting body.</div></body></html>'
     assert extract_post_text(html) == ""
+
+def test_compile_keyword_regex_normal():
+    regex = compile_keyword_regex(["apple", "banana", "cherry"])
+    assert regex.search("I want an apple")
+    assert regex.search("BANANA is good")
+    assert not regex.search("I like pear")
+
+def test_compile_keyword_regex_empty():
+    regex = compile_keyword_regex([])
+    assert not regex.search("apple")
+    assert not regex.search("")
+
+    regex_whitespace = compile_keyword_regex([" ", "\t"])
+    assert not regex_whitespace.search("apple")
+    assert not regex_whitespace.search("")
+
+def test_compile_keyword_regex_special_characters():
+    regex = compile_keyword_regex(["C++", "Node.js", "C#"])
+    assert regex.search("I code in C++")
+    assert regex.search("Using Node.js is fun")
+    assert regex.search("Learning C#")
+    assert not regex.search("I code in C+")
+    assert not regex.search("Using NodeXjs")
+
+def test_compile_keyword_regex_case_insensitive():
+    regex = compile_keyword_regex(["Python"])
+    assert regex.search("python")
+    assert regex.search("PYTHON")
+    assert regex.search("pYtHoN")
 
 def test_save_seen_normal(tmp_path: Path):
     path = tmp_path / "seen.json"
