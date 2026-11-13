@@ -37,6 +37,10 @@ def test_is_same_site_exception():
     assert is_same_site(123, "https://sfbay.craigslist.org") is False
     assert is_same_site("https://sfbay.craigslist.org", 123) is False
 
+def test_is_same_site_invalid():
+    assert is_same_site(None, "https://sfbay.craigslist.org") is False
+    assert is_same_site("https://sfbay.craigslist.org", None) is False
+
 def test_extract_post_text_normal():
     html = '<html><body><section id="postingbody">This is a test post.</section></body></html>'
     assert extract_post_text(html) == "This is a test post."
