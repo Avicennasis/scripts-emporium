@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import json
 import os
@@ -350,9 +350,9 @@ def main():
     for i in range(0, total_urls, args.batch_size):
         batch = processing_queue[i:i+args.batch_size]
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.batch_size) as executor:
+        with ThreadPoolExecutor(max_workers=args.batch_size) as executor:
             future_to_url = {executor.submit(check_link_polite, url, args.user_agent, args.timeout, args.verbose): url for url in batch}
-            for future in concurrent.futures.as_completed(future_to_url):
+            for future in as_completed(future_to_url):
                 res = future.result()
                 new_results.append(res)
         
