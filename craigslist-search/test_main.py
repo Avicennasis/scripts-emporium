@@ -9,7 +9,23 @@ from pathlib import Path
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text, is_same_site, load_seen, compile_keyword_regex
+from main import extract_post_text, is_same_site, load_seen, compile_keyword_regex, listing_id_from_url
+
+def test_listing_id_from_url_normal():
+    url = "https://boston.craigslist.org/gbs/gms/d/waltham-title/7812345678.html"
+    assert listing_id_from_url(url) == "7812345678"
+
+def test_listing_id_from_url_with_query():
+    url = "https://boston.craigslist.org/gbs/gms/d/waltham-title/7812345678.html?foo=bar"
+    assert listing_id_from_url(url) == "7812345678"
+
+def test_listing_id_from_url_fallback_no_numeric():
+    url = "https://boston.craigslist.org/gbs/gms/d/waltham-title/abc.html"
+    assert listing_id_from_url(url) == url
+
+def test_listing_id_from_url_fallback_no_html():
+    url = "https://boston.craigslist.org/gbs/gms/d/waltham-title/7812345678"
+    assert listing_id_from_url(url) == url
 
 def test_is_same_site_normal():
     assert is_same_site("https://sfbay.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is True
