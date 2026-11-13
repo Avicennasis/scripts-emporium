@@ -146,6 +146,7 @@ from __future__ import annotations
 
 # Standard library imports for core functionality
 import argparse      # Command-line argument parsing
+import concurrent.futures # Concurrent execution for faster API calls
 import json          # JSON serialization for output files and signature creation
 import re            # Regular expressions for parsing DNS record values
 import sys           # System exit codes
@@ -391,6 +392,50 @@ def group_status(domains: List[str], sig_json: str, allow_mail: Optional[set]) -
 # REPORT GENERATION
 # =============================================================================
 
+def format_group_report(idx: int, sig: str, doms: List[str], allow_mail: Optional[set]) -> List[str]:
+    """
+    Format the text report lines for a single group of domains.
+
+    Parameters:
+    -----------
+    idx : int
+        The group number
+    sig : str
+        The JSON signature for the group
+    doms : List[str]
+        The list of domains in the group
+    allow_mail : Optional[set]
+        Mail domain allowlist for status determination
+
+    Returns:
+    --------
+    List[str]
+        A list of formatted lines for the report.
+    """
+    lines: List[str] = []
+
+    # Sort domains alphabetically for consistent output
+    doms_sorted = sorted(doms)
+
+    # Determine group status based on allowlist
+    status = group_status(doms_sorted, sig, allow_mail)
+
+    # Write group header
+    lines.append(f"=== Group {idx} | {len(doms_sorted)} domains | {status} ===")
+
+    # Write signature details
+    lines.append(pretty_signature(sig))
+
+    # Write complete domain list
+    lines.append("Domains:")
+    for d in doms_sorted:
+        lines.append(f"  - {d}")
+
+    lines.append("")  # Blank line between groups
+
+    return lines
+
+
 def write_text_report(report_path: Path, group_items: List[Tuple[str, List[str]]], allow_mail: Optional[set]) -> None:
     """
     Write a grouped audit report to a text file.
@@ -428,24 +473,7 @@ def write_text_report(report_path: Path, group_items: List[Tuple[str, List[str]]
 
     # Write each group
     for idx, (sig, doms) in enumerate(group_items, start=1):
-        # Sort domains alphabetically for consistent output
-        doms_sorted = sorted(doms)
-
-        # Determine group status based on allowlist
-        status = group_status(doms_sorted, sig, allow_mail)
-
-        # Write group header
-        lines.append(f"=== Group {idx} | {len(doms_sorted)} domains | {status} ===")
-
-        # Write signature details
-        lines.append(pretty_signature(sig))
-
-        # Write complete domain list
-        lines.append("Domains:")
-        for d in doms_sorted:
-            lines.append(f"  - {d}")
-
-        lines.append("")  # Blank line between groups
+        lines.extend(format_group_report(idx, sig, doms, allow_mail))
 
     # Ensure parent directory exists and write the file
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -595,31 +623,34 @@ Security tip: Use the .env file approach and set permissions with:
     # Groups: signature -> list of domains with that signature
     groups: Dict[str, List[str]] = {}
 
-    # Process each domain
-    for d in domains:
+    # Process each domain concurrently
+    def process_domain(d: str) -> Optional[Tuple[str, List[Dict[str, Any]], Dict[str, Any], str]]:
         try:
-            # Fetch all DNS records for this domain
             recs = client.list_records(d)
         except Exception as e:
-            # Log error but continue with other domains
-            # One bad zone shouldn't stop the whole audit
-            print(f"[ERROR] Failed to fetch records for {d}: {e}")
-            continue
+            print(f"[ERROR] Failed to process domain {d}: {e}")
+            return None
 
-        # Optional: write raw record dumps per domain
-        if args.dump_records and outdir is not None:
-            (outdir / f"{d}.records.json").write_text(
-                json.dumps(recs, indent=2, sort_keys=True),
-                encoding="utf-8"
-            )
-
-        # Build summary for this domain
+        # Local parsing should not be hidden behind API call error handling.
         s = summarize_domain(d, recs, dead_mx_host=args.dead_mx_host)
-        summaries.append(s)
-
-        # Compute signature and add to appropriate group
         sig = signature(s)
-        groups.setdefault(sig, []).append(d)
+        return (d, recs, s, sig)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # executor.map preserves the order of `domains` so results are deterministic
+        for result in executor.map(process_domain, domains):
+            if result:
+                d, recs, s, sig = result
+
+                # Optional: write raw record dumps per domain
+                if args.dump_records and outdir is not None:
+                    (outdir / f"{d}.records.json").write_text(
+                        json.dumps(recs, indent=2, sort_keys=True),
+                        encoding="utf-8"
+                    )
+
+                summaries.append(s)
+                groups.setdefault(sig, []).append(d)
 
     # -------------------------------------------------------------------------
     # SORT GROUPS BY SIZE (largest first)

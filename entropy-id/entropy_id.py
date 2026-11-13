@@ -30,7 +30,6 @@ Usage:
 
 Exit status: 0 report produced, 2 refused or unusable target.
 """
-from __future__ import annotations
 
 import argparse
 import math
@@ -165,13 +164,15 @@ def check_target(path: str) -> None:
 # --------------------------------------------------------------------------
 
 def pread_full(fd: int, size: int, offset: int) -> bytes:
-    buf = b""
-    while len(buf) < size:
-        chunk = os.pread(fd, size - len(buf), offset + len(buf))
+    chunks = []
+    total_len = 0
+    while total_len < size:
+        chunk = os.pread(fd, size - total_len, offset + total_len)
         if not chunk:
             break
-        buf += chunk
-    return buf
+        chunks.append(chunk)
+        total_len += len(chunk)
+    return b"".join(chunks)
 
 
 def entropy(buf: bytes) -> float:
