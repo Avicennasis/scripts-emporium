@@ -48,6 +48,7 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urljoin, urlparse
+import concurrent.futures
 
 import requests
 from bs4 import BeautifulSoup
@@ -383,6 +384,52 @@ def fetch_and_dedupe(
     return list(by_id.values())
 
 
+def _process_single_listing(
+    listing: Listing,
+    session: requests.Session,
+    kw_re: re.Pattern,
+    sleep_seconds: float,
+    dry_run: bool
+) -> tuple[bool, bool]:
+    """
+    Process a single listing.
+    Returns a tuple (was_processed, matched_and_alert_sent).
+    """
+    try:
+        post_html = http_get_text(session, listing.link)
+    except Exception as e:
+        print(f"[skip] could not fetch post: {listing.link} ({e})", file=sys.stderr)
+        time.sleep(sleep_seconds)
+        return True, False
+
+    post_text = extract_post_text(post_html)
+    if not post_text:
+        time.sleep(sleep_seconds)
+        return True, False
+
+    m = kw_re.search(post_text)
+    matched_and_sent = False
+    if m:
+        matched_word = m.group(0)
+
+        subject = f"Craigslist match: {matched_word}"
+        message_body = (
+            f"{listing.title}\n"
+            f"{listing.link}\n\n"
+            f"Matched: {matched_word}\n"
+        )
+
+        if dry_run:
+            print(f"[dry-run] match '{matched_word}' -> {listing.link}")
+        else:
+            send_alert(subject, message_body)
+            print(f"[alert] match '{matched_word}' -> {listing.link}")
+
+        matched_and_sent = True
+
+    time.sleep(sleep_seconds)
+    return True, matched_and_sent
+
 def process_new_listings(
     session: requests.Session,
     listings_unique: list[Listing],
@@ -397,47 +444,37 @@ def process_new_listings(
     matched = 0
     alerts_sent = 0
 
+    to_process = []
     for listing in listings_unique:
         if listing.id in seen:
             already_seen += 1
             continue
 
-        processed_new += 1
         # Mark as seen early to avoid repeats even if something fails mid-run
         seen[listing.id] = None
+        to_process.append(listing)
 
-        try:
-            post_html = http_get_text(session, listing.link)
-        except Exception as e:
-            print(f"[skip] could not fetch post: {listing.link} ({e})", file=sys.stderr)
-            time.sleep(sleep_seconds)
-            continue
+    if not to_process:
+        return already_seen, processed_new, matched, alerts_sent
 
-        post_text = extract_post_text(post_html)
-        if not post_text:
-            time.sleep(sleep_seconds)
-            continue
+    max_workers = min(10, len(to_process))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_process_single_listing, listing, session, kw_re, sleep_seconds, dry_run)
+            for listing in to_process
+        ]
 
-        m = kw_re.search(post_text)
-        if m:
-            matched += 1
-            matched_word = m.group(0)
-
-            subject = f"Craigslist match: {matched_word}"
-            message_body = (
-                f"{listing.title}\n"
-                f"{listing.link}\n\n"
-                f"Matched: {matched_word}\n"
-            )
-
-            if dry_run:
-                print(f"[dry-run] match '{matched_word}' -> {listing.link}")
-            else:
-                send_alert(subject, message_body)
-                print(f"[alert] match '{matched_word}' -> {listing.link}")
-                alerts_sent += 1
-
-        time.sleep(sleep_seconds)
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                was_processed, matched_and_sent = future.result()
+                if was_processed:
+                    processed_new += 1
+                if matched_and_sent:
+                    matched += 1
+                    if not dry_run:
+                        alerts_sent += 1
+            except Exception as e:
+                print(f"[error] worker thread exception: {e}", file=sys.stderr)
 
     return already_seen, processed_new, matched, alerts_sent
 
