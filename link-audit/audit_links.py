@@ -270,12 +270,16 @@ def interleave_urls(urls):
     
     # Round-robin selection
     interleaved = []
-    while domain_map:
-        keys = list(domain_map.keys())
-        for k in keys:
+    active_keys = list(domain_map.keys())
+    while active_keys:
+        next_keys = []
+        for k in active_keys:
             interleaved.append(domain_map[k].pop(0))
             if not domain_map[k]:
                 del domain_map[k]
+            else:
+                next_keys.append(k)
+        active_keys = next_keys
     
     return interleaved
 
