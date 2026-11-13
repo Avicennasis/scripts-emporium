@@ -9,7 +9,7 @@ from pathlib import Path
 # Ensure we can import main
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import main
-from main import extract_post_text, is_same_site
+from main import extract_post_text, is_same_site, load_seen
 
 def test_is_same_site_normal():
     assert is_same_site("https://sfbay.craigslist.org/zip/123.html", "https://sfbay.craigslist.org") is True
@@ -122,3 +122,17 @@ class TestSendAlert(unittest.TestCase):
 
         # Verify it is exactly immediately before the recipient
         self.assertEqual(recipient_idx, dash_dash_idx + 1)
+
+def test_load_seen_file_not_exists(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    assert load_seen(path) == {}
+
+def test_load_seen_valid_list(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    path.write_text('["123", "456", 789]', encoding="utf-8")
+    assert load_seen(path) == {"123": None, "456": None, "789": None}
+
+def test_load_seen_not_a_list(tmp_path):
+    path = tmp_path / "seen_craigslist.json"
+    path.write_text('{"123": null}', encoding="utf-8")
+    assert load_seen(path) == {}
