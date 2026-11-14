@@ -1,2 +1,4 @@
 .stargazer-context.json
 seen_craigslist.json
+__pycache__/
+*.py[cod]
